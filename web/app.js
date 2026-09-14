@@ -1055,12 +1055,29 @@
     });
 
     // Reset Progress Modal
-    els.resetDataBtn.addEventListener("click", () => {
+    function openResetModal() {
       els.resetModal.hidden = false;
+      els.resetModal.style.display = "flex";
+    }
+
+    function closeResetModal() {
+      els.resetModal.hidden = true;
+      els.resetModal.style.display = "none";
+    }
+
+    els.resetDataBtn.addEventListener("click", openResetModal);
+    els.cancelResetBtn.addEventListener("click", closeResetModal);
+
+    els.resetModal.addEventListener("click", (e) => {
+      if (e.target === els.resetModal) {
+        closeResetModal();
+      }
     });
 
-    els.cancelResetBtn.addEventListener("click", () => {
-      els.resetModal.hidden = true;
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !els.resetModal.hidden) {
+        closeResetModal();
+      }
     });
 
     els.confirmResetBtn.addEventListener("click", () => {
@@ -1071,7 +1088,7 @@
       updateDashboardCounts();
       renderDeckList();
       presentNextCard({ autoSpeak: false });
-      els.resetModal.hidden = true;
+      closeResetModal();
       showToast("Progress has been reset.");
     });
   }

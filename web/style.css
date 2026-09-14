@@ -80,6 +80,10 @@
   padding: 0;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   font-family: var(--font-sans);
   background: var(--bg-app);
@@ -1030,6 +1034,10 @@ input:checked + .slider:before {
   justify-content: center;
   padding: 20px;
   animation: fadeIn 0.15s ease-out;
+}
+
+.modal-overlay[hidden] {
+  display: none !important;
 }
 
 .modal-card {
