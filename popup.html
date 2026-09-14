@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vocabulary SRS</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="eyebrow">VOCABULARY SRS</p>
+        <h1>Learn a little, often.</h1>
+      </div>
+      <span id="runningBadge" class="status-badge stopped">STOPPED</span>
+    </header>
+
+    <button id="startStop" class="start-button" type="button">
+      Start reminders
+    </button>
+    <p id="startHint" class="start-hint">Press Start. One card will appear at the interval you choose; each word’s repetition timing is automatic.</p>
+
+    <section class="card" aria-live="polite">
+      <div class="card-topline">
+        <div id="stageLabel" class="stage-label">NEW WORD</div>
+        <button id="speakWord" class="speak-button" type="button" aria-label="Hear this word twice">🔊 Hear word</button>
+      </div>
+      <div id="term" class="term">Loading…</div>
+      <div id="reading" class="reading"></div>
+      <div id="meaningPrompt" class="meaning-prompt">Choose the correct meaning</div>
+      <div id="meaningChoices" class="meaning-choices" aria-label="Meaning choices"></div>
+      <div id="meaning" class="meaning" hidden></div>
+
+      <div class="example-box">
+        <div class="example-topline">
+          <span id="exampleLabel" class="example-label">COMMON SENTENCE</span>
+          <button id="speakSentence" class="speak-button" type="button" aria-label="Hear this sentence twice">🔊 Hear sentence</button>
+        </div>
+        <div id="exampleText" class="example-text">Loading example…</div>
+        <div id="exampleReading" class="example-reading"></div>
+        <div id="exampleMeaning" class="example-meaning"></div>
+      </div>
+
+      <div id="manualReviewPanel" class="manual-review-panel" hidden>
+        <p>Change the saved status</p>
+        <div class="review-actions">
+          <button id="newWord" class="button new-button" type="button">New Word</button>
+          <button id="forget" class="button secondary" type="button">Forget</button>
+          <button id="remember" class="button primary" type="button">Remember</button>
+        </div>
+      </div>
+      <p id="feedback" class="feedback" role="status"></p>
+    </section>
+
+    <section class="stats" aria-label="Learning statistics">
+      <div><strong id="wordStat">1000</strong><span>words</span></div>
+      <div><strong id="reviewedStat">0</strong><span>reviewed</span></div>
+      <div><strong id="newStat">0</strong><span>new</span></div>
+      <div><strong id="dueStat">0</strong><span>due now</span></div>
+      <div><strong id="rememberedStat">0</strong><span>remembered</span></div>
+    </section>
+
+    <section class="settings">
+      <div class="pack-setting">
+        <label for="pack">Vocabulary pack</label>
+        <select id="pack" aria-describedby="packHint"></select>
+        <p id="packHint">Additional Chinese or French packs added to vocabulary.json appear here automatically.</p>
+      </div>
+
+      <div class="setting-row">
+        <div>
+          <label for="intervalMinutes">Word appearance interval</label>
+          <p>One card appears every x minutes. Each word’s repetition interval adapts automatically.</p>
+        </div>
+        <div class="interval-control">
+          <input id="intervalMinutes" type="number" min="1" max="1440" step="1" value="30" />
+          <span>min</span>
+        </div>
+      </div>
+
+      <div class="setting-row secondary-setting-row">
+        <div>
+          <label for="autoHideSeconds">Unanswered-card countdown</label>
+          <p>If no answer is chosen, this timer starts after speech finishes. Answered cards follow the close setting below.</p>
+        </div>
+        <div class="interval-control">
+          <input id="autoHideSeconds" type="number" min="5" max="300" step="1" value="10" />
+          <span>sec</span>
+        </div>
+      </div>
+
+
+      <label class="check-row" for="closeAfterAnswer">
+        <input id="closeAfterAnswer" type="checkbox" checked />
+        <span>Close the reminder immediately after choosing an answer</span>
+      </label>
+      <p class="muted setting-note">When enabled, the correct answer is revealed and saved, then the webpage reminder closes immediately. Turn this off to keep the card open until you close it.</p>
+
+      <div class="setting-row secondary-setting-row">
+        <div>
+          <label for="volumePercent">Speech volume</label>
+          <p>Controls both online pronunciation and the system-speech fallback.</p>
+        </div>
+        <div class="volume-control">
+          <input id="volumePercent" type="range" min="0" max="100" step="5" value="100" />
+          <span id="volumeValue">100%</span>
+        </div>
+      </div>
+
+      <label class="check-row" for="autoSpeak">
+        <input id="autoSpeak" type="checkbox" checked />
+        <span>Hear the word twice, then the sentence twice</span>
+      </label>
+      <p id="speechStatus" class="muted">Audio uses the language and speech code defined by the selected pack.</p>
+
+      <div class="settings-footer">
+        <p id="nextReminder" class="muted">Reminders have not started.</p>
+        <button id="save" class="text-button" type="button">Save settings</button>
+      </div>
+      <p id="vocabularyStatus" class="muted">Vocabulary: checking…</p>
+      <p id="dataStatus" class="muted">Progress protection: checking…</p>
+    </section>
+
+    <footer>
+      <button id="showNow" class="text-button" type="button">Show and hear current card now</button>
+      <button id="reset" class="danger-button" type="button">Reset progress</button>
+    </footer>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

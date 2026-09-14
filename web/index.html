@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Vocabulary SRS — Spaced Repetition Chinese Learning</title>
+  <meta name="description" content="Adaptive spaced-repetition vocabulary learning web app with meaning choices, example sentences, and audio pronunciation." />
+  <link rel="icon" type="image/png" href="icons/icon32.png" />
+  <link rel="apple-touch-icon" href="icons/icon128.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#3b82f6" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Top App Header -->
+  <header class="app-header">
+    <div class="header-container">
+      <a href="#" class="brand" id="brandLink">
+        <div class="brand-icon">汉</div>
+        <div class="brand-info">
+          <h1>Vocabulary SRS</h1>
+          <span class="brand-badge" id="appModeBadge">Web App</span>
+        </div>
+      </a>
+
+      <div class="header-actions">
+        <select id="packSelect" class="pack-select" aria-label="Select vocabulary pack"></select>
+        <button id="themeToggle" class="icon-button" type="button" aria-label="Toggle dark mode" title="Toggle theme">
+          🌙
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Tabs -->
+  <nav class="nav-tabs-container">
+    <div class="nav-tabs">
+      <button class="tab-button active" data-tab="study" type="button">
+        <span>📖 Study</span>
+        <span class="tab-badge" id="dueBadge">0</span>
+      </button>
+      <button class="tab-button" data-tab="deck" type="button">
+        <span>📚 Word List</span>
+      </button>
+      <button class="tab-button" data-tab="stats" type="button">
+        <span>📊 Statistics</span>
+      </button>
+      <button class="tab-button" data-tab="settings" type="button">
+        <span>⚙️ Settings</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main Views Container -->
+  <main class="main-content">
+    <!-- STUDY TAB -->
+    <section id="studyView" class="tab-view active">
+      <div class="study-top-bar">
+        <div class="timer-pill" id="intervalTimerPill" title="Timer interval for reminder mode">
+          <span class="timer-dot"></span>
+          <span id="timerStatusText">Self-paced study</span>
+        </div>
+
+        <div class="study-stats-summary">
+          <div class="stat-item-inline">Due: <strong id="studyDueCount">0</strong></div>
+          <div class="stat-item-inline">New: <strong id="studyNewCount">0</strong></div>
+          <div class="stat-item-inline">Reviewed: <strong id="studyReviewedCount">0</strong></div>
+        </div>
+      </div>
+
+      <!-- Flashcard / Quiz Component -->
+      <article class="flashcard" id="flashcard" aria-live="polite">
+        <div class="card-header-bar">
+          <span class="stage-badge" id="stageBadge">NEW WORD</span>
+          <div class="speak-controls">
+            <button id="speakWordBtn" class="audio-btn" type="button" aria-label="Hear word twice">
+              🔊 Word
+            </button>
+            <button id="speakSentenceBtn" class="audio-btn" type="button" aria-label="Hear sentence twice">
+              🔊 Sentence
+            </button>
+          </div>
+        </div>
+
+        <div class="term-container">
+          <div class="hanzi-term" id="hanziTerm">加载中…</div>
+          <div class="pinyin-reading" id="pinyinReading">loading…</div>
+        </div>
+
+        <!-- Meaning Quiz Choices -->
+        <div class="quiz-section" id="quizSection">
+          <div class="quiz-prompt" id="quizPrompt">Choose the correct meaning</div>
+          <div class="choices-grid" id="choicesGrid"></div>
+          <div class="revealed-meaning-box" id="revealedMeaning" hidden></div>
+        </div>
+
+        <!-- Example Sentence Card -->
+        <div class="example-card" id="exampleCard">
+          <div class="example-header">
+            <span class="example-label">COMMON SENTENCE</span>
+            <button id="speakExampleBtn" class="audio-btn" type="button" aria-label="Hear example sentence">
+              🔊 Listen
+            </button>
+          </div>
+          <div class="example-hanzi" id="exampleHanzi">Loading example sentence…</div>
+          <div class="example-pinyin" id="examplePinyin"></div>
+          <div class="example-english" id="exampleEnglish"></div>
+        </div>
+
+        <!-- Review Controls Panel -->
+        <div class="review-actions-panel" id="reviewActionsPanel">
+          <div class="actions-label" id="actionsLabel">SRS Interval Adjustment</div>
+          <div class="action-buttons-row">
+            <button id="newWordBtn" class="btn btn-secondary" type="button" title="Defer card without learning (Shortcut: N)">
+              New Word (N)
+            </button>
+            <button id="forgetBtn" class="btn btn-danger" type="button" title="Reset interval (Shortcut: F)">
+              Forget (F)
+            </button>
+            <button id="rememberBtn" class="btn btn-success" type="button" title="Increase interval (Shortcut: R)">
+              Remember (R)
+            </button>
+            <button id="nextCardBtn" class="btn btn-primary btn-next" type="button" title="Next card (Shortcut: Space or Enter)">
+              Next Card →
+            </button>
+          </div>
+        </div>
+
+        <!-- Keyboard Shortcuts Hint Bar -->
+        <div class="keyboard-bar">
+          <span><span class="kbd">1</span> <span class="kbd">2</span> <span class="kbd">3</span> Answer</span>
+          <span><span class="kbd">Space</span> Audio / Next</span>
+          <span><span class="kbd">R</span> Remember</span>
+          <span><span class="kbd">F</span> Forget</span>
+        </div>
+      </article>
+    </section>
+
+    <!-- WORD LIST / DECK BROWSER TAB -->
+    <section id="deckView" class="tab-view">
+      <div class="deck-controls">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="deckSearchInput" class="search-input" placeholder="Search Hanzi, Pinyin, or English..." />
+        </div>
+        <div class="filter-chips">
+          <button class="chip active" data-filter="all" type="button">All (<span id="countAll">0</span>)</button>
+          <button class="chip" data-filter="due" type="button">Due (<span id="countDue">0</span>)</button>
+          <button class="chip" data-filter="reviewed" type="button">Reviewed (<span id="countReviewed">0</span>)</button>
+          <button class="chip" data-filter="new" type="button">New (<span id="countNew">0</span>)</button>
+        </div>
+      </div>
+
+      <div class="word-list" id="deckWordList">
+        <!-- Rendered dynamically -->
+      </div>
+    </section>
+
+    <!-- STATISTICS TAB -->
+    <section id="statsView" class="tab-view">
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="stat-number" id="statsTotal">1000</div>
+          <div class="stat-label">Total Words</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number" id="statsReviewed">0</div>
+          <div class="stat-label">Reviewed</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number" id="statsDue">0</div>
+          <div class="stat-label">Due For Review</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number" id="statsNew">1000</div>
+          <div class="stat-label">Unseen (New)</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number" id="statsRetention">100%</div>
+          <div class="stat-label">Retention Rate</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number" id="statsLapses">0</div>
+          <div class="stat-label">Total Lapses</div>
+        </div>
+      </div>
+
+      <div class="progress-section">
+        <div class="progress-header">
+          <span>Mastery Distribution</span>
+          <span id="progressPercentText">0% mastered</span>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-segment segment-learned" id="segmentLearned" style="width: 0%;"></div>
+          <div class="progress-segment segment-learning" id="segmentLearning" style="width: 0%;"></div>
+          <div class="progress-segment segment-new" id="segmentNew" style="width: 100%;"></div>
+        </div>
+        <div class="progress-legend">
+          <span><span class="legend-dot" style="background: var(--success);"></span>Mastered (Repetitions &gt; 3)</span>
+          <span><span class="legend-dot" style="background: var(--primary);"></span>Learning (In review)</span>
+          <span><span class="legend-dot" style="background: var(--border-color);"></span>New (Unseen)</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- SETTINGS TAB -->
+    <section id="settingsView" class="tab-view">
+      <div class="settings-panel">
+        <div class="settings-group">
+          <h2 class="settings-group-title">Study Cadence & Reminders</h2>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="reminderEnabled">Reminder Mode</label>
+              <p>Periodically prompt you with a new card while this tab is open</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="reminderEnabled" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="intervalMinutesInput">Reminder Interval (Minutes)</label>
+              <p>Frequency for automatic card reminders in Reminder Mode</p>
+            </div>
+            <div class="setting-control">
+              <input type="number" id="intervalMinutesInput" class="input-number" min="1" max="1440" value="15" />
+              <span>min</span>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="enableBrowserNotifications">Desktop / Browser Notifications</label>
+              <p>Show system notifications when a new card is due while in the background</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="enableBrowserNotifications" />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <h2 class="settings-group-title">Audio & Pronunciation</h2>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="voiceSelect">Chinese Speech Voice</label>
+              <p>Browser Web Speech voice for Mandarin Chinese</p>
+            </div>
+            <div class="setting-control">
+              <select id="voiceSelect" class="pack-select"></select>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="volumeRange">Speech Volume</label>
+              <p>Controls pronunciation volume (<span id="volumeLabel">100%</span>)</p>
+            </div>
+            <div class="setting-control">
+              <input type="range" id="volumeRange" class="input-range" min="0" max="100" step="5" value="100" />
+            </div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="speedRange">Speech Rate</label>
+              <p>Controls speech speed (<span id="speedLabel">0.85x</span>)</p>
+            </div>
+            <div class="setting-control">
+              <input type="range" id="speedRange" class="input-range" min="0.5" max="1.5" step="0.05" value="0.85" />
+            </div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="autoSpeakToggle">Auto-read on card presentation</label>
+              <p>Read word twice, then example sentence twice when a new card appears</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="autoSpeakToggle" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <h2 class="settings-group-title">Data Backup & Compatibility</h2>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label>Export Progress</label>
+              <p>Download a backup JSON file of all your SRS repetitions, ease, and due dates</p>
+            </div>
+            <button id="exportDataBtn" class="btn btn-secondary" type="button">⬇️ Export JSON</button>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label>Import Progress</label>
+              <p>Restore from a backup JSON or transfer progress from the Edge extension</p>
+            </div>
+            <div class="setting-control">
+              <input type="file" id="importFileInput" accept=".json" style="display: none;" />
+              <button id="importDataBtn" class="btn btn-secondary" type="button">⬆️ Import JSON</button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label style="color: var(--danger-text);">Reset Progress</label>
+              <p>Clear all learning history and start fresh with 0 reviewed cards</p>
+            </div>
+            <button id="resetDataBtn" class="btn btn-danger" type="button">⚠️ Reset All</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Reset Confirmation Modal -->
+  <div class="modal-overlay" id="resetModal" hidden>
+    <div class="modal-card">
+      <h3 class="modal-title">Reset Learning Progress?</h3>
+      <p class="modal-desc">This will erase all SRS review intervals, repetitions, and history for this vocabulary pack. This action cannot be undone unless you have an exported backup.</p>
+      <div class="modal-actions">
+        <button id="cancelResetBtn" class="btn btn-secondary" type="button">Cancel</button>
+        <button id="confirmResetBtn" class="btn btn-danger" type="button">Yes, Reset Progress</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Load Scripts -->
+  <script src="srs.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
