@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=2" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -313,12 +313,12 @@
   </main>
 
   <!-- Reset Confirmation Modal -->
-  <div class="modal-overlay" id="resetModal" hidden>
+  <div class="modal-overlay" id="resetModal" hidden style="display: none;" onclick="if(event.target===this){this.classList.remove('active');this.style.display='none';this.setAttribute('hidden','');}">
     <div class="modal-card">
       <h3 class="modal-title">Reset Learning Progress?</h3>
       <p class="modal-desc">This will erase all SRS review intervals, repetitions, and history for this vocabulary pack. This action cannot be undone unless you have an exported backup.</p>
       <div class="modal-actions">
-        <button id="cancelResetBtn" class="btn btn-secondary" type="button">Cancel</button>
+        <button id="cancelResetBtn" class="btn btn-secondary" type="button" onclick="const m=document.getElementById('resetModal');if(m){m.classList.remove('active');m.style.display='none';m.setAttribute('hidden','');}">Cancel</button>
         <button id="confirmResetBtn" class="btn btn-danger" type="button">Yes, Reset Progress</button>
       </div>
     </div>
@@ -328,7 +328,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Load Scripts -->
-  <script src="srs.js"></script>
-  <script src="app.js"></script>
+  <script src="srs.js?v=2"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>

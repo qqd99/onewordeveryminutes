@@ -3,13 +3,16 @@
  * Caches application shell and vocabulary catalog for 100% offline usage.
  */
 
-const CACHE_NAME = "vocab-srs-cache-v1";
+const CACHE_NAME = "vocab-srs-cache-v2";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
   "./style.css",
+  "./style.css?v=2",
   "./app.js",
+  "./app.js?v=2",
   "./srs.js",
+  "./srs.js?v=2",
   "./vocabulary.json",
   "./manifest.webmanifest",
   "./icons/icon16.png",
@@ -50,31 +53,20 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  // Network-first strategy with cache fallback
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Fetch in background to revalidate cache (stale-while-revalidate)
-        fetch(event.request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
-          }
-        }).catch(() => {});
-
-        return cachedResponse;
-      }
-
-      return fetch(event.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== "basic") {
-          return networkResponse;
+    fetch(event.request)
+      .then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
         }
-
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseToCache);
-        });
-
         return networkResponse;
-      });
-    })
+      })
+      .catch(() => {
+        return caches.match(event.request);
+      })
   );
 });

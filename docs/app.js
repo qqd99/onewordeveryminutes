@@ -1056,17 +1056,27 @@
 
     // Reset Progress Modal
     function openResetModal() {
-      els.resetModal.hidden = false;
+      els.resetModal.classList.add("active");
+      els.resetModal.removeAttribute("hidden");
       els.resetModal.style.display = "flex";
     }
 
     function closeResetModal() {
-      els.resetModal.hidden = true;
+      els.resetModal.classList.remove("active");
       els.resetModal.style.display = "none";
+      els.resetModal.setAttribute("hidden", "");
     }
 
-    els.resetDataBtn.addEventListener("click", openResetModal);
-    els.cancelResetBtn.addEventListener("click", closeResetModal);
+    els.resetDataBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      openResetModal();
+    });
+
+    els.cancelResetBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeResetModal();
+    });
 
     els.resetModal.addEventListener("click", (e) => {
       if (e.target === els.resetModal) {
@@ -1075,7 +1085,7 @@
     });
 
     window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && !els.resetModal.hidden) {
+      if (e.key === "Escape") {
         closeResetModal();
       }
     });
