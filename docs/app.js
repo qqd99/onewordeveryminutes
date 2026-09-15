@@ -71,6 +71,8 @@
     exampleHanzi: $("#exampleHanzi"),
     examplePinyin: $("#examplePinyin"),
     exampleEnglish: $("#exampleEnglish"),
+    exampleBreakdown: $("#exampleBreakdown"),
+    breakdownChips: $("#breakdownChips"),
     newWordBtn: $("#newWordBtn"),
     forgetBtn: $("#forgetBtn"),
     rememberBtn: $("#rememberBtn"),
@@ -464,6 +466,48 @@
   /* -------------------------------------------------------------
      6. UI PRESENTATION & CARD RENDERING
   ------------------------------------------------------------- */
+
+  /**
+   * Fallback word segmenter for imported cards lacking precomputed `words` breakdown.
+   * Uses longest-match from vocabulary pack cards as a simple greedy tokenizer.
+   */
+  function extractWordsFallback(text, packCards) {
+    if (!text || !packCards || packCards.length === 0) return [];
+
+    // Build lookup from card fronts (longest first for greedy matching)
+    const knownWords = packCards
+      .map(c => ({ word: c.front, meaning: c.meaning }))
+      .sort((a, b) => b.word.length - a.word.length);
+
+    const punctuationRe = /^[\s，。？！、；：""''（）《》…—!?,.:;"'()\[\]]+$/;
+    const result = [];
+    let i = 0;
+    const clean = text.trim();
+
+    while (i < clean.length) {
+      if (punctuationRe.test(clean[i])) { i++; continue; }
+
+      // Longest-match from known vocabulary
+      let matched = false;
+      for (const entry of knownWords) {
+        if (clean.startsWith(entry.word, i)) {
+          result.push({ word: entry.word, meaning: entry.meaning });
+          i += entry.word.length;
+          matched = true;
+          break;
+        }
+      }
+
+      if (!matched) {
+        // Emit single character
+        result.push({ word: clean[i], meaning: "" });
+        i++;
+      }
+    }
+
+    return result;
+  }
+
   function renderCard(card, { autoSpeak = true } = {}) {
     state.currentCard = card;
     state.quizAnswered = false;
@@ -517,14 +561,56 @@
       els.choicesGrid.appendChild(btn);
     });
 
-    // Example Card
+    // Example Card & Word Breakdown
     if (card.example && card.example.text) {
       els.exampleCard.hidden = false;
       els.exampleHanzi.textContent = card.example.text;
       els.examplePinyin.textContent = card.example.reading || "";
       els.exampleEnglish.textContent = card.example.meaning || "";
+
+      // Render divided words with English translation & Google Translate links
+      const words = card.example.words || extractWordsFallback(card.example.text, state.activePack?.cards || []);
+      if (words && words.length > 0) {
+        els.exampleBreakdown.hidden = false;
+        els.breakdownChips.innerHTML = "";
+        words.forEach(item => {
+          const a = document.createElement("a");
+          a.className = "word-chip";
+          a.href = `https://translate.google.com/?sl=zh-TW&tl=en&text=${encodeURIComponent(item.word)}&op=translate`;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.title = `Translate "${item.word}" with Google Translate`;
+
+          const wordSpan = document.createElement("span");
+          wordSpan.className = "chip-word";
+          wordSpan.textContent = item.word;
+
+          const colonSpan = document.createElement("span");
+          colonSpan.className = "chip-colon";
+          colonSpan.textContent = ":";
+
+          const meaningSpan = document.createElement("span");
+          meaningSpan.className = "chip-meaning";
+          meaningSpan.textContent = item.meaning;
+
+          const extSpan = document.createElement("span");
+          extSpan.className = "chip-ext";
+          extSpan.textContent = "↗";
+
+          a.appendChild(wordSpan);
+          a.appendChild(colonSpan);
+          a.appendChild(meaningSpan);
+          a.appendChild(extSpan);
+
+          els.breakdownChips.appendChild(a);
+        });
+      } else {
+        els.exampleBreakdown.hidden = true;
+        els.breakdownChips.innerHTML = "";
+      }
     } else {
       els.exampleCard.hidden = true;
+      els.exampleBreakdown.hidden = true;
     }
 
     // Mark shown in SRS

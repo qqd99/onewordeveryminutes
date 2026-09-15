@@ -555,6 +555,99 @@ body {
   font-style: italic;
 }
 
+/* Example Word Breakdown */
+.example-breakdown {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.breakdown-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.breakdown-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.breakdown-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.breakdown-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.word-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  text-decoration: none;
+  font-size: 13px;
+  transition: var(--transition);
+  cursor: pointer;
+}
+
+.word-chip:hover {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  color: var(--primary-text);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.chip-word {
+  font-family: var(--font-hanzi);
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.word-chip:hover .chip-word {
+  color: var(--primary-text);
+}
+
+.chip-colon {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.chip-meaning {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.word-chip:hover .chip-meaning {
+  color: var(--primary-text);
+}
+
+.chip-ext {
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.6;
+  margin-left: 2px;
+  transition: opacity 0.15s ease;
+}
+
+.word-chip:hover .chip-ext {
+  opacity: 1;
+  color: var(--primary-text);
+}
+
 /* SRS Review Controls */
 .review-actions-panel {
   margin-top: 28px;
