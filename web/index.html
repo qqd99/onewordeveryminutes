@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=6" />
+  <link rel="stylesheet" href="style.css?v=7" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -358,6 +358,19 @@
           <h2 class="settings-group-title">Audio & Pronunciation</h2>
           <div class="setting-row">
             <div class="setting-info">
+              <label for="audioEngineSelect">Audio Engine</label>
+              <p>Choose speech source (Online Audio never freezes)</p>
+            </div>
+            <div class="setting-control">
+              <select id="audioEngineSelect" class="pack-select">
+                <option value="auto">Auto (Speech Synthesis + Online Fallback)</option>
+                <option value="online">Online Audio (HD Audio — Never Freezes)</option>
+                <option value="speechSynthesis">Device Speech Synthesis Only</option>
+              </select>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
               <label for="voiceSelect">Chinese Speech Voice</label>
               <p>Browser Web Speech voice for Mandarin Chinese</p>
             </div>
@@ -401,6 +414,13 @@
             <div class="setting-control">
               <input type="number" id="wordRepeatCount" class="input-number" min="1" max="5" step="1" value="2" />
             </div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label>Audio Diagnostics &amp; Recovery</label>
+              <p>Test audio playback or unfreeze speech synthesis if it becomes silent</p>
+            </div>
+            <button id="testAudioBtn" class="btn btn-secondary" type="button">🔊 Test &amp; Fix Sound</button>
           </div>
         </div>
 
@@ -451,7 +471,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Load Scripts -->
-  <script src="srs.js?v=6"></script>
-  <script src="app.js?v=6"></script>
+  <script src="srs.js?v=7"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>

@@ -29,6 +29,7 @@
         speed: 0.85,
         autoSpeak: true,
         wordRepeat: 2,
+        audioEngine: "auto",
         selectedVoice: "",
         notificationsEnabled: false
       },
@@ -127,6 +128,8 @@
     intervalSummaryText: $("#intervalSummaryText"),
     presetButtons: $(".preset-btn"),
     enableBrowserNotifications: $("#enableBrowserNotifications"),
+    audioEngineSelect: $("#audioEngineSelect"),
+    testAudioBtn: $("#testAudioBtn"),
     voiceSelect: $("#voiceSelect"),
     volumeRange: $("#volumeRange"),
     volumeLabel: $("#volumeLabel"),
@@ -216,18 +219,30 @@
   }
 
   /* -------------------------------------------------------------
-     3. AUDIO & SPEECH SYNTHESIS ENGINE
+     3. AUDIO & SPEECH SYNTHESIS ENGINE (ROBUST MULTI-PROVIDER)
   ------------------------------------------------------------- */
   let activeUtterance = null;
   let activeAudioEl = null;
+  const activeUtterances = new Set(); // Prevents Chromium V8 garbage collection bug
+
+  function recoverSpeechSynthesis() {
+    if (!("speechSynthesis" in window)) return;
+    try {
+      window.speechSynthesis.cancel();
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
+    } catch (e) {
+      console.warn("Error recovering speech synthesis:", e);
+    }
+  }
 
   function stopAudio() {
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-    }
+    recoverSpeechSynthesis();
     if (activeAudioEl) {
       try {
         activeAudioEl.pause();
+        activeAudioEl.currentTime = 0;
       } catch (_) {}
       activeAudioEl = null;
     }
@@ -236,25 +251,30 @@
 
   function loadVoices() {
     if (!("speechSynthesis" in window)) return;
-    const voices = window.speechSynthesis.getVoices();
-    state.availableVoices = voices;
+    try {
+      const voices = window.speechSynthesis.getVoices();
+      state.availableVoices = voices || [];
 
-    els.voiceSelect.innerHTML = "";
-    const defaultOpt = document.createElement("option");
-    defaultOpt.value = "";
-    defaultOpt.textContent = "Auto-detect Chinese voice";
-    els.voiceSelect.appendChild(defaultOpt);
+      if (!els.voiceSelect) return;
+      els.voiceSelect.innerHTML = "";
+      const defaultOpt = document.createElement("option");
+      defaultOpt.value = "";
+      defaultOpt.textContent = "Auto-detect Chinese voice";
+      els.voiceSelect.appendChild(defaultOpt);
 
-    const zhVoices = voices.filter(v => /^zh|cmn|chinese/i.test(v.lang) || /^zh|chinese/i.test(v.name));
-    for (const v of zhVoices) {
-      const opt = document.createElement("option");
-      opt.value = v.name;
-      opt.textContent = `${v.name} (${v.lang})`;
-      els.voiceSelect.appendChild(opt);
-    }
+      const zhVoices = (voices || []).filter(v => /^zh|cmn|chinese/i.test(v.lang) || /^zh|chinese/i.test(v.name));
+      for (const v of zhVoices) {
+        const opt = document.createElement("option");
+        opt.value = v.name;
+        opt.textContent = `${v.name} (${v.lang})`;
+        els.voiceSelect.appendChild(opt);
+      }
 
-    if (state.store.settings.selectedVoice) {
-      els.voiceSelect.value = state.store.settings.selectedVoice;
+      if (state.store.settings.selectedVoice) {
+        els.voiceSelect.value = state.store.settings.selectedVoice;
+      }
+    } catch (err) {
+      console.warn("Could not load speech voices:", err);
     }
   }
 
@@ -277,11 +297,88 @@
       null;
   }
 
-  function speakTextNative(text, { lang = "zh-CN", repeat = 1, delayMs = 400 }) {
+  // Multi-provider online audio endpoints (HTML5 Audio pipeline - immune to speech synthesis freezes)
+  const ONLINE_TTS_PROVIDERS = [
+    (text, lang) => `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${encodeURIComponent(lang)}&q=${encodeURIComponent(text)}`,
+    (text, lang) => `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=${encodeURIComponent(lang)}&q=${encodeURIComponent(text)}`,
+    (text, lang) => `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(text)}&type=2`
+  ];
+
+  function playOnlineAudio(text, { lang = "zh-CN", repeat = 1, delayMs = 400 } = {}) {
+    return new Promise((resolve) => {
+      const clean = String(text || "").trim();
+      if (!clean) { resolve(); return; }
+      const volume = (state.store.settings.volume ?? 100) / 100;
+      let count = 0;
+
+      function playNext() {
+        if (count >= repeat) {
+          resolve();
+          return;
+        }
+
+        let providerIndex = 0;
+        function tryProvider() {
+          if (providerIndex >= ONLINE_TTS_PROVIDERS.length) {
+            resolve();
+            return;
+          }
+
+          const url = ONLINE_TTS_PROVIDERS[providerIndex](clean, lang);
+          const audio = new Audio(url);
+          activeAudioEl = audio;
+          audio.volume = volume;
+
+          let didFinish = false;
+          const finishPlay = () => {
+            if (didFinish) return;
+            didFinish = true;
+            activeAudioEl = null;
+            count += 1;
+            if (count < repeat) {
+              setTimeout(playNext, delayMs);
+            } else {
+              resolve();
+            }
+          };
+
+          audio.onended = finishPlay;
+
+          audio.onerror = () => {
+            if (didFinish) return;
+            providerIndex += 1;
+            tryProvider();
+          };
+
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.catch((err) => {
+              console.warn("Online audio provider error, trying fallback:", err?.message || err);
+              if (!didFinish) {
+                providerIndex += 1;
+                tryProvider();
+              }
+            });
+          }
+        }
+
+        tryProvider();
+      }
+
+      playNext();
+    });
+  }
+
+  function speakTextNative(text, { lang = "zh-CN", repeat = 1, delayMs = 400 } = {}) {
     return new Promise((resolve) => {
       if (!("speechSynthesis" in window) || !text) {
-        resolve();
+        playOnlineAudio(text, { lang, repeat, delayMs }).then(resolve);
         return;
+      }
+
+      // Check if paused and unfreeze
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
       }
 
       const voice = chooseVoice(lang);
@@ -294,13 +391,33 @@
           resolve();
           return;
         }
+
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = lang;
         utterance.volume = volume;
         utterance.rate = rate;
         if (voice) utterance.voice = voice;
 
+        // Keep reference in Set to prevent Chromium V8 garbage collection
+        activeUtterances.add(utterance);
+        activeUtterance = utterance;
+
+        let started = false;
+        let finished = false;
+
+        const cleanup = () => {
+          finished = true;
+          activeUtterances.delete(utterance);
+          clearTimeout(startWatchdog);
+        };
+
+        utterance.onstart = () => {
+          started = true;
+          clearTimeout(startWatchdog);
+        };
+
         utterance.onend = () => {
+          cleanup();
           count += 1;
           if (count < repeat) {
             setTimeout(speakOnce, delayMs);
@@ -309,62 +426,61 @@
           }
         };
 
-        utterance.onerror = () => {
-          // If error or cancelled, resolve to avoid hanging
-          resolve();
+        utterance.onerror = (e) => {
+          cleanup();
+          console.warn("SpeechSynthesis error:", e?.error || e);
+          recoverSpeechSynthesis();
+          // Fall back to online audio for remaining repetitions
+          playOnlineAudio(text, { lang, repeat: repeat - count, delayMs }).then(resolve);
         };
 
-        activeUtterance = utterance;
-        window.speechSynthesis.speak(utterance);
+        // Watchdog: If Chromium speech synthesis does not start speaking within 1200ms
+        const startWatchdog = setTimeout(() => {
+          if (!started && !finished) {
+            console.warn("SpeechSynthesis failed to start (Chromium freeze detected). Recovering and falling back to online audio...");
+            cleanup();
+            recoverSpeechSynthesis();
+            playOnlineAudio(text, { lang, repeat: repeat - count, delayMs }).then(resolve);
+          }
+        }, 1200);
+
+        try {
+          window.speechSynthesis.speak(utterance);
+          if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+          }
+        } catch (err) {
+          console.warn("SpeechSynthesis.speak threw error:", err);
+          cleanup();
+          playOnlineAudio(text, { lang, repeat: repeat - count, delayMs }).then(resolve);
+        }
       }
 
       speakOnce();
     });
   }
 
-  function playOnlineAudioFallback(text, { lang = "zh-CN", repeat = 1, delayMs = 400 }) {
-    return new Promise((resolve) => {
-      const clean = encodeURIComponent(String(text || "").trim());
-      const volume = (state.store.settings.volume ?? 100) / 100;
-      const url = `https://dict.youdao.com/dictvoice?audio=${clean}&type=2`;
-
-      let count = 0;
-      function playNext() {
-        if (count >= repeat) {
-          resolve();
-          return;
-        }
-        const audio = new Audio(url);
-        activeAudioEl = audio;
-        audio.volume = volume;
-        audio.onended = () => {
-          count += 1;
-          if (count < repeat) {
-            setTimeout(playNext, delayMs);
-          } else {
-            resolve();
-          }
-        };
-        audio.onerror = () => {
-          resolve(); // Resolve anyway on network or decode error
-        };
-        audio.play().catch(() => resolve());
-      }
-      playNext();
-    });
-  }
-
-  async function speak(text, { lang = "zh-CN", repeat = 2 }) {
+  async function speak(text, { lang = "zh-CN", repeat = 2 } = {}) {
     stopAudio();
     if (!text || (state.store.settings.volume ?? 100) === 0) return;
 
+    const engine = state.store.settings.audioEngine || "auto";
+
     try {
-      // Check if native speech synthesis has usable voice
-      const voice = chooseVoice(lang);
-      if (voice || "speechSynthesis" in window) {
+      if (engine === "online") {
+        // Direct high-quality online audio (bypasses browser speech synthesis completely)
+        await playOnlineAudio(text, { lang, repeat });
+      } else if (engine === "speechSynthesis") {
+        // Native speech synthesis only
         await speakTextNative(text, { lang, repeat });
       } else {
-        await playOnlineAudioFallback(text, { lang, repeat });
+        // Auto: Try native speech with automatic watchdog fallback to online audio
+        const voice = chooseVoice(lang);
+        if (voice && "speechSynthesis" in window) {
+          await speakTextNative(text, { lang, repeat });
+        } else {
+          await playOnlineAudio(text, { lang, repeat });
+        }
       }
     } catch (err) {
       console.warn("Speech playback error:", err);
@@ -1461,6 +1577,27 @@
       els.speedLabel.textContent = `${state.store.settings.speed}x`;
       saveStoredState();
     });
+
+    // Audio Engine Selection
+    if (els.audioEngineSelect) {
+      els.audioEngineSelect.value = state.store.settings.audioEngine || "auto";
+      els.audioEngineSelect.addEventListener("change", (e) => {
+        state.store.settings.audioEngine = e.target.value;
+        saveStoredState();
+        showToast(`Audio engine set to: ${e.target.options[e.target.selectedIndex].text}`);
+      });
+    }
+
+    // Audio Diagnostics & Recovery Button
+    if (els.testAudioBtn) {
+      els.testAudioBtn.addEventListener("click", async () => {
+        recoverSpeechSynthesis();
+        showToast("🔊 Testing sound playback…");
+        const testWord = state.currentCard?.front || "你好";
+        await speak(testWord, { repeat: 1 });
+        showToast("Sound test completed! Audio engine verified.");
+      });
+    }
 
     els.autoSpeakToggle.checked = state.store.settings.autoSpeak !== false;
     els.autoSpeakToggle.addEventListener("change", (e) => {
