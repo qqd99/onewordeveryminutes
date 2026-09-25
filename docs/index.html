@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=4" />
+  <link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -41,6 +41,9 @@
       </button>
       <button class="tab-button" data-tab="deck" type="button">
         <span>📚 Word List</span>
+      </button>
+      <button class="tab-button" data-tab="translate" type="button">
+        <span>🌐 Translate</span>
       </button>
       <button class="tab-button" data-tab="stats" type="button">
         <span>📊 Statistics</span>
@@ -162,6 +165,84 @@
 
       <div class="word-list" id="deckWordList">
         <!-- Rendered dynamically -->
+      </div>
+    </section>
+
+    <!-- TRANSLATE TAB -->
+    <section id="translateView" class="tab-view">
+      <div class="translate-container">
+        <div class="translate-header">
+          <h2>Sentence Translation &amp; Vocabulary Breakdown</h2>
+          <p>Translate any Chinese sentence into English, view Pinyin pronunciation, and break down words with definitions and Google Translate lookup.</p>
+        </div>
+
+        <!-- Quick Sample Chips -->
+        <div class="sample-chips-bar">
+          <span class="sample-label">Try sample:</span>
+          <button class="sample-chip" type="button" data-sample="莫要看我形">莫要看我形</button>
+          <button class="sample-chip" type="button" data-sample="我总是说好!">我总是说好!</button>
+          <button class="sample-chip" type="button" data-sample="学而时习之，不亦说乎？">学而时习之</button>
+          <button class="sample-chip" type="button" data-sample="你好，很高兴认识你。">很高兴认识你</button>
+        </div>
+
+        <!-- Input Area Card -->
+        <div class="translate-input-card">
+          <div class="textarea-wrapper">
+            <textarea
+              id="translateInput"
+              class="translate-textarea"
+              rows="3"
+              placeholder="what do you need to translate?"
+              aria-label="Input Chinese text to translate"
+            ></textarea>
+            <button id="clearTranslateBtn" class="clear-input-btn" type="button" title="Clear text" hidden>✕</button>
+          </div>
+
+          <div class="translate-actions-bar">
+            <div class="input-meta">
+              <span id="translateCharCount" class="char-count">0 characters</span>
+              <span id="translateStatusIndicator" class="status-indicator"></span>
+            </div>
+            <div class="action-buttons-group">
+              <button id="speakInputBtn" class="btn btn-secondary btn-icon-text" type="button" title="Pronounce Chinese text">
+                🔊 Listen
+              </button>
+              <button id="translateBtn" class="btn btn-primary" type="button">
+                Translate
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Results Container -->
+        <div id="translateResult" class="translate-result-container" hidden>
+          <!-- Full Sentence Translation Card -->
+          <div class="translate-card sentence-result-card">
+            <div class="result-card-header">
+              <span class="result-label">SENTENCE TRANSLATION</span>
+              <div class="result-card-actions">
+                <button id="speakResultBtn" class="audio-btn" type="button" title="Listen to sentence">
+                  🔊 Speak
+                </button>
+                <button id="copyTranslationBtn" class="icon-button" type="button" title="Copy English translation">
+                  📋
+                </button>
+              </div>
+            </div>
+            <div class="result-chinese" id="resultChinese"></div>
+            <div class="result-pinyin" id="resultPinyin"></div>
+            <div class="result-english" id="resultEnglish"></div>
+          </div>
+
+          <!-- Word-by-Word Breakdown Card -->
+          <div class="translate-card words-result-card" id="translateWordsCard">
+            <div class="result-card-header">
+              <span class="result-label">WORD BREAKDOWN &amp; MEANINGS</span>
+              <span class="result-hint">Click any word to translate on Google ↗</span>
+            </div>
+            <div class="word-breakdown-grid" id="translateWordsGrid"></div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -346,7 +427,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Load Scripts -->
-  <script src="srs.js?v=4"></script>
-  <script src="app.js?v=4"></script>
+  <script src="srs.js?v=5"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

@@ -100,6 +100,23 @@
     segmentLearning: $("#segmentLearning"),
     segmentNew: $("#segmentNew"),
 
+    // Translate View
+    translateInput: $("#translateInput"),
+    clearTranslateBtn: $("#clearTranslateBtn"),
+    translateCharCount: $("#translateCharCount"),
+    translateStatusIndicator: $("#translateStatusIndicator"),
+    speakInputBtn: $("#speakInputBtn"),
+    translateBtn: $("#translateBtn"),
+    translateResult: $("#translateResult"),
+    resultChinese: $("#resultChinese"),
+    resultPinyin: $("#resultPinyin"),
+    resultEnglish: $("#resultEnglish"),
+    speakResultBtn: $("#speakResultBtn"),
+    copyTranslationBtn: $("#copyTranslationBtn"),
+    translateWordsCard: $("#translateWordsCard"),
+    translateWordsGrid: $("#translateWordsGrid"),
+    sampleChips: $(".sample-chip"),
+
     // Settings View
     reminderEnabled: $("#reminderEnabled"),
     intervalMinutesInput: $("#intervalMinutesInput"),
@@ -1015,6 +1032,291 @@
     scheduleNextReminder();
   }
 
+
+  /* -------------------------------------------------------------
+     8B. TRANSLATE & WORD BREAKDOWN SECTION
+  ------------------------------------------------------------- */
+  const translationCache = new Map();
+  let translateDebounceTimer = null;
+
+  async function fetchGoogleTranslate(text) {
+    const trimmed = text.trim();
+    if (!trimmed) return null;
+    if (translationCache.has(trimmed)) {
+      return translationCache.get(trimmed);
+    }
+
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=en&dt=t&dt=rm&dt=bd&q=${encodeURIComponent(trimmed)}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+    const data = await response.json();
+
+    let translation = "";
+    if (Array.isArray(data[0])) {
+      translation = data[0]
+        .filter(item => item && item[0])
+        .map(item => item[0])
+        .join("");
+    }
+
+    let pinyin = "";
+    if (Array.isArray(data[0])) {
+      for (const item of data[0]) {
+        if (item && item.length >= 4 && typeof item[3] === "string" && item[3]) {
+          pinyin = item[3];
+          break;
+        }
+      }
+    }
+
+    const result = { translation, pinyin };
+    translationCache.set(trimmed, result);
+    return result;
+  }
+
+  function segmentChineseText(text) {
+    if (!text) return [];
+    if (typeof Intl !== "undefined" && Intl.Segmenter) {
+      try {
+        const segmenter = new Intl.Segmenter("zh-CN", { granularity: "word" });
+        const raw = Array.from(segmenter.segment(text))
+          .filter(s => s.isWordLike && s.segment.trim().length > 0)
+          .map(s => s.segment.trim());
+        if (raw.length > 0) return raw;
+      } catch (err) {
+        console.warn("Intl.Segmenter error:", err);
+      }
+    }
+    const fallbackList = extractWordsFallback(text, state.activePack?.cards || []);
+    return fallbackList.map(item => item.word);
+  }
+
+  async function executeTranslation() {
+    const text = els.translateInput.value.trim();
+    if (!text) {
+      els.translateResult.hidden = true;
+      els.translateStatusIndicator.textContent = "";
+      return;
+    }
+
+    els.translateStatusIndicator.textContent = "Translating…";
+    els.translateBtn.disabled = true;
+
+    try {
+      let fullTrans = { translation: "", pinyin: "" };
+      try {
+        fullTrans = await fetchGoogleTranslate(text);
+      } catch (err) {
+        console.warn("Google translate API error:", err);
+        fullTrans = { translation: "(Offline / Translation unavailable)", pinyin: "" };
+      }
+
+      const words = segmentChineseText(text);
+
+      const allCards = state.activePack?.cards || (state.catalog?.packs?.[0]?.cards || []);
+      const cardMap = new Map();
+      allCards.forEach(c => {
+        if (c.front) cardMap.set(c.front, c);
+      });
+
+      // Common characters & particles dictionary
+      const commonWords = {
+        "莫": { reading: "mò", meaning: "do not, not" },
+        "形": { reading: "xíng", meaning: "appearance, shape, form" },
+        "莫要": { reading: "mò yào", meaning: "do not, must not" }
+      };
+
+      const wordDetails = await Promise.all(
+        words.map(async (w) => {
+          const card = cardMap.get(w);
+          if (card) {
+            return {
+              word: w,
+              pinyin: card.reading || "",
+              meaning: card.meaning || "",
+              isHsk: true
+            };
+          }
+
+          if (commonWords[w]) {
+            return {
+              word: w,
+              pinyin: commonWords[w].reading,
+              meaning: commonWords[w].meaning,
+              isHsk: false
+            };
+          }
+
+          let trans = translationCache.get(w);
+          if (!trans) {
+            try {
+              trans = await fetchGoogleTranslate(w);
+            } catch (e) {
+              trans = { translation: "", pinyin: "" };
+            }
+          }
+
+          return {
+            word: w,
+            pinyin: trans?.pinyin || "",
+            meaning: trans?.translation || "",
+            isHsk: false
+          };
+        })
+      );
+
+      els.resultChinese.textContent = text;
+      els.resultPinyin.textContent = fullTrans.pinyin || "";
+      els.resultPinyin.hidden = !fullTrans.pinyin;
+      els.resultEnglish.textContent = fullTrans.translation || "(No translation returned)";
+
+      els.translateWordsGrid.innerHTML = "";
+      if (wordDetails.length > 0) {
+        els.translateWordsCard.hidden = false;
+        wordDetails.forEach(item => {
+          const a = document.createElement("a");
+          a.className = "breakdown-word-card";
+          a.href = `https://translate.google.com/?sl=zh-TW&tl=en&text=${encodeURIComponent(item.word)}&op=translate`;
+          a.target = "_blank";
+          a.rel = "noopener noreferrer";
+          a.title = `Look up "${item.word}" on Google Translate`;
+
+          const topRow = document.createElement("div");
+          topRow.className = "card-word-top";
+
+          const wordSpan = document.createElement("span");
+          wordSpan.className = "card-word-text";
+          wordSpan.textContent = item.word;
+
+          const metaSpan = document.createElement("div");
+          metaSpan.style.display = "flex";
+          metaSpan.style.alignItems = "center";
+          metaSpan.style.gap = "4px";
+
+          if (item.isHsk) {
+            const hsk = document.createElement("span");
+            hsk.className = "hsk-badge-pill";
+            hsk.textContent = "HSK";
+            metaSpan.appendChild(hsk);
+          }
+
+          const extIcon = document.createElement("span");
+          extIcon.className = "card-ext-icon";
+          extIcon.textContent = "↗";
+          metaSpan.appendChild(extIcon);
+
+          topRow.appendChild(wordSpan);
+          topRow.appendChild(metaSpan);
+          a.appendChild(topRow);
+
+          if (item.pinyin) {
+            const pinyinSpan = document.createElement("div");
+            pinyinSpan.className = "card-pinyin-text";
+            pinyinSpan.textContent = item.pinyin;
+            a.appendChild(pinyinSpan);
+          }
+
+          if (item.meaning) {
+            const meaningSpan = document.createElement("div");
+            meaningSpan.className = "card-meaning-text";
+            meaningSpan.textContent = item.meaning;
+            a.appendChild(meaningSpan);
+          }
+
+          els.translateWordsGrid.appendChild(a);
+        });
+      } else {
+        els.translateWordsCard.hidden = true;
+      }
+
+      els.translateResult.hidden = false;
+      els.translateStatusIndicator.textContent = "Done";
+      setTimeout(() => {
+        if (els.translateStatusIndicator.textContent === "Done") {
+          els.translateStatusIndicator.textContent = "";
+        }
+      }, 2000);
+    } catch (err) {
+      console.error("Translation execution error:", err);
+      els.translateStatusIndicator.textContent = "Error translating text";
+    } finally {
+      els.translateBtn.disabled = false;
+    }
+  }
+
+  function setupTranslateSection() {
+    function updateCharCount() {
+      const len = els.translateInput.value.length;
+      els.translateCharCount.textContent = `${len} character${len === 1 ? "" : "s"}`;
+      els.clearTranslateBtn.hidden = len === 0;
+    }
+
+    els.translateInput.addEventListener("input", () => {
+      updateCharCount();
+      if (translateDebounceTimer) clearTimeout(translateDebounceTimer);
+      const text = els.translateInput.value.trim();
+      if (!text) {
+        els.translateResult.hidden = true;
+        els.translateStatusIndicator.textContent = "";
+        return;
+      }
+      translateDebounceTimer = setTimeout(() => {
+        executeTranslation();
+      }, 650);
+    });
+
+    els.translateBtn.addEventListener("click", () => {
+      if (translateDebounceTimer) clearTimeout(translateDebounceTimer);
+      executeTranslation();
+    });
+
+    els.clearTranslateBtn.addEventListener("click", () => {
+      els.translateInput.value = "";
+      updateCharCount();
+      els.translateResult.hidden = true;
+      els.translateStatusIndicator.textContent = "";
+      els.translateInput.focus();
+    });
+
+    els.speakInputBtn.addEventListener("click", () => {
+      const text = els.translateInput.value.trim();
+      if (text) {
+        const r = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
+        speak(text, { lang: "zh-CN", repeat: r });
+      }
+    });
+
+    els.speakResultBtn.addEventListener("click", () => {
+      const text = els.resultChinese.textContent.trim();
+      if (text) {
+        speak(text, { lang: "zh-CN", repeat: 1 });
+      }
+    });
+
+    els.copyTranslationBtn.addEventListener("click", async () => {
+      const trans = els.resultEnglish.textContent.trim();
+      if (trans && navigator.clipboard) {
+        try {
+          await navigator.clipboard.writeText(trans);
+          showToast("Translation copied to clipboard!");
+        } catch (e) {
+          console.warn("Copy failed:", e);
+        }
+      }
+    });
+
+    document.querySelectorAll(".sample-chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        const sampleText = chip.dataset.sample;
+        if (sampleText) {
+          els.translateInput.value = sampleText;
+          updateCharCount();
+          executeTranslation();
+        }
+      });
+    });
+  }
+
   /* -------------------------------------------------------------
      10. SETTINGS & DATA EXPORT / IMPORT
   ------------------------------------------------------------- */
@@ -1221,6 +1523,8 @@
       renderDeckList();
     } else if (tabName === "stats") {
       updateDashboardCounts();
+    } else if (tabName === "translate") {
+      if (els.translateInput) els.translateInput.focus();
     }
   }
 
@@ -1287,6 +1591,7 @@
     initTheme();
     setupActionButtons();
     setupDeckBrowser();
+    setupTranslateSection();
     setupSettings();
     setupTabs();
     setupKeyboardShortcuts();
