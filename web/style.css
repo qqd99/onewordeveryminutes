@@ -1514,3 +1514,98 @@ input:checked + .slider:before {
   font-weight: 600;
   margin-left: 6px;
 }
+
+
+/* -------------------------------------------------------------
+   TIME PICKER & PRESET CONTROLS
+------------------------------------------------------------- */
+.time-setting-row {
+  align-items: flex-start;
+}
+
+.time-picker-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.time-unit-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.input-time {
+  width: 58px;
+  height: 38px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card-sub);
+  color: var(--text-main);
+  outline: none;
+  transition: var(--transition);
+}
+
+.input-time:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.time-unit-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.time-separator {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-bottom: 15px;
+}
+
+.interval-presets-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0 14px;
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.presets-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.presets-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.preset-btn {
+  background: var(--bg-card-sub);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  padding: 4px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.preset-btn:hover {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: translateY(-1px);
+}

@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=5" />
+  <link rel="stylesheet" href="style.css?v=6" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -308,14 +308,38 @@
               <span class="slider"></span>
             </label>
           </div>
-          <div class="setting-row">
+          <div class="setting-row time-setting-row">
             <div class="setting-info">
-              <label for="intervalMinutesInput">Reminder Interval (Minutes)</label>
-              <p>Frequency for automatic card reminders in Reminder Mode</p>
+              <label>Reminder Interval</label>
+              <p>Frequency for automatic card reminders in Reminder Mode (Total: <strong id="intervalSummaryText">15m</strong>)</p>
             </div>
-            <div class="setting-control">
-              <input type="number" id="intervalMinutesInput" class="input-number" min="1" max="1440" value="15" />
-              <span>min</span>
+            <div class="time-picker-controls">
+              <div class="time-unit-box">
+                <input type="number" id="intervalHoursInput" class="input-time" min="0" max="72" value="0" placeholder="0" aria-label="Hours" />
+                <span class="time-unit-label">hours</span>
+              </div>
+              <span class="time-separator">:</span>
+              <div class="time-unit-box">
+                <input type="number" id="intervalMinutesInput" class="input-time" min="0" max="59" value="15" placeholder="15" aria-label="Minutes" />
+                <span class="time-unit-label">min</span>
+              </div>
+              <span class="time-separator">:</span>
+              <div class="time-unit-box">
+                <input type="number" id="intervalSecondsInput" class="input-time" min="0" max="59" value="0" placeholder="0" aria-label="Seconds" />
+                <span class="time-unit-label">sec</span>
+              </div>
+            </div>
+          </div>
+          <div class="interval-presets-row">
+            <span class="presets-label">Presets:</span>
+            <div class="presets-buttons">
+              <button type="button" class="preset-btn" data-hours="0" data-minutes="0" data-seconds="10">10s</button>
+              <button type="button" class="preset-btn" data-hours="0" data-minutes="0" data-seconds="30">30s</button>
+              <button type="button" class="preset-btn" data-hours="0" data-minutes="1" data-seconds="0">1m</button>
+              <button type="button" class="preset-btn" data-hours="0" data-minutes="5" data-seconds="0">5m</button>
+              <button type="button" class="preset-btn" data-hours="0" data-minutes="15" data-seconds="0">15m</button>
+              <button type="button" class="preset-btn" data-hours="0" data-minutes="30" data-seconds="0">30m</button>
+              <button type="button" class="preset-btn" data-hours="1" data-minutes="0" data-seconds="0">1h</button>
             </div>
           </div>
           <div class="setting-row">
@@ -427,7 +451,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Load Scripts -->
-  <script src="srs.js?v=5"></script>
-  <script src="app.js?v=5"></script>
+  <script src="srs.js?v=6"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

@@ -3,16 +3,16 @@
  * Caches application shell and vocabulary catalog for 100% offline usage.
  */
 
-const CACHE_NAME = "vocab-srs-cache-v5";
+const CACHE_NAME = "vocab-srs-cache-v6";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
   "./style.css",
-  "./style.css?v=5",
+  "./style.css?v=6",
   "./app.js",
-  "./app.js?v=5",
+  "./app.js?v=6",
   "./srs.js",
-  "./srs.js?v=5",
+  "./srs.js?v=6",
   "./vocabulary.json",
   "./manifest.webmanifest",
   "./icons/icon16.png",

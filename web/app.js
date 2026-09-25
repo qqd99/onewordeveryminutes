@@ -21,7 +21,9 @@
       settings: {
         theme: "light",
         activePackId: "zh-hsk-core-1000",
+        intervalHours: 0,
         intervalMinutes: 15,
+        intervalSeconds: 0,
         reminderEnabled: false,
         volume: 100,
         speed: 0.85,
@@ -119,7 +121,11 @@
 
     // Settings View
     reminderEnabled: $("#reminderEnabled"),
+    intervalHoursInput: $("#intervalHoursInput"),
     intervalMinutesInput: $("#intervalMinutesInput"),
+    intervalSecondsInput: $("#intervalSecondsInput"),
+    intervalSummaryText: $("#intervalSummaryText"),
+    presetButtons: $(".preset-btn"),
     enableBrowserNotifications: $("#enableBrowserNotifications"),
     voiceSelect: $("#voiceSelect"),
     volumeRange: $("#volumeRange"),
@@ -155,6 +161,8 @@
           lastCardId: parsed.lastCardId || null,
           currentCardId: parsed.currentCardId || null
         };
+        if (state.store.settings.intervalHours === undefined) state.store.settings.intervalHours = 0;
+        if (state.store.settings.intervalSeconds === undefined) state.store.settings.intervalSeconds = 0;
       }
     } catch (err) {
       console.warn("Could not read local storage state:", err);
@@ -989,6 +997,28 @@
   /* -------------------------------------------------------------
      9. REMINDER CADENCE TIMER & NOTIFICATIONS
   ------------------------------------------------------------- */
+
+  function getTotalIntervalSeconds() {
+    const s = state.store.settings;
+    const hours = Math.max(0, parseInt(s.intervalHours, 10) || 0);
+    const minutes = Math.max(0, parseInt(s.intervalMinutes, 10) || 0);
+    const seconds = Math.max(0, parseInt(s.intervalSeconds, 10) || 0);
+    const total = (hours * 3600) + (minutes * 60) + seconds;
+    return Math.max(5, total); // Minimum 5 seconds
+  }
+
+  function formatTimeInterval(totalSeconds) {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    const parts = [];
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+    return parts.join(" ");
+  }
+
   function scheduleNextReminder() {
     if (state.timerId) {
       clearInterval(state.timerId);
@@ -1001,12 +1031,12 @@
       return;
     }
 
-    const intervalMinutes = Math.max(1, Number(state.store.settings.intervalMinutes) || 15);
-    const intervalMs = intervalMinutes * 60 * 1000;
+    const totalSeconds = getTotalIntervalSeconds();
+    const intervalMs = totalSeconds * 1000;
     state.nextReminderTime = Date.now() + intervalMs;
 
     els.intervalTimerPill.classList.add("active");
-    els.timerStatusText.textContent = `Next card in ${intervalMinutes}m`;
+    els.timerStatusText.textContent = `Next card in ${formatTimeInterval(totalSeconds)}`;
 
     state.timerId = setInterval(() => {
       triggerReminder();
@@ -1329,12 +1359,66 @@
       scheduleNextReminder();
     });
 
-    // Interval minutes
-    els.intervalMinutesInput.value = state.store.settings.intervalMinutes;
-    els.intervalMinutesInput.addEventListener("change", (e) => {
-      state.store.settings.intervalMinutes = Math.max(1, Number(e.target.value) || 15);
-      saveStoredState();
-      if (state.store.settings.reminderEnabled) scheduleNextReminder();
+    // Interval Hours, Minutes, Seconds
+    function updateIntervalSummary() {
+      const totalSec = getTotalIntervalSeconds();
+      if (els.intervalSummaryText) {
+        els.intervalSummaryText.textContent = formatTimeInterval(totalSec);
+      }
+    }
+
+    if (els.intervalHoursInput) {
+      els.intervalHoursInput.value = state.store.settings.intervalHours || 0;
+      els.intervalHoursInput.addEventListener("input", (e) => {
+        state.store.settings.intervalHours = Math.max(0, parseInt(e.target.value, 10) || 0);
+        updateIntervalSummary();
+        saveStoredState();
+        if (state.store.settings.reminderEnabled) scheduleNextReminder();
+      });
+    }
+
+    if (els.intervalMinutesInput) {
+      els.intervalMinutesInput.value = state.store.settings.intervalMinutes ?? 15;
+      els.intervalMinutesInput.addEventListener("input", (e) => {
+        state.store.settings.intervalMinutes = Math.max(0, parseInt(e.target.value, 10) || 0);
+        updateIntervalSummary();
+        saveStoredState();
+        if (state.store.settings.reminderEnabled) scheduleNextReminder();
+      });
+    }
+
+    if (els.intervalSecondsInput) {
+      els.intervalSecondsInput.value = state.store.settings.intervalSeconds || 0;
+      els.intervalSecondsInput.addEventListener("input", (e) => {
+        state.store.settings.intervalSeconds = Math.max(0, parseInt(e.target.value, 10) || 0);
+        updateIntervalSummary();
+        saveStoredState();
+        if (state.store.settings.reminderEnabled) scheduleNextReminder();
+      });
+    }
+
+    updateIntervalSummary();
+
+    // Preset Buttons
+    document.querySelectorAll(".preset-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const h = parseInt(btn.dataset.hours, 10) || 0;
+        const m = parseInt(btn.dataset.minutes, 10) || 0;
+        const s = parseInt(btn.dataset.seconds, 10) || 0;
+
+        state.store.settings.intervalHours = h;
+        state.store.settings.intervalMinutes = m;
+        state.store.settings.intervalSeconds = s;
+
+        if (els.intervalHoursInput) els.intervalHoursInput.value = h;
+        if (els.intervalMinutesInput) els.intervalMinutesInput.value = m;
+        if (els.intervalSecondsInput) els.intervalSecondsInput.value = s;
+
+        updateIntervalSummary();
+        saveStoredState();
+        if (state.store.settings.reminderEnabled) scheduleNextReminder();
+        showToast(`Interval set to ${formatTimeInterval(getTotalIntervalSeconds())}`);
+      });
     });
 
     // Notifications
