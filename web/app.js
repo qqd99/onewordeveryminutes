@@ -26,6 +26,7 @@
         volume: 100,
         speed: 0.85,
         autoSpeak: true,
+        wordRepeat: 2,
         selectedVoice: "",
         notificationsEnabled: false
       },
@@ -109,6 +110,8 @@
     speedRange: $("#speedRange"),
     speedLabel: $("#speedLabel"),
     autoSpeakToggle: $("#autoSpeakToggle"),
+    wordRepeatCount: $("#wordRepeatCount"),
+    wordRepeatLabel: $("#wordRepeatLabel"),
     exportDataBtn: $("#exportDataBtn"),
     importDataBtn: $("#importDataBtn"),
     importFileInput: $("#importFileInput"),
@@ -348,14 +351,15 @@
     stopAudio();
     const wordText = card.speechText || card.front;
     const exampleText = card.example?.speechText || card.example?.text;
+    const repeatCount = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
 
-    // Word twice
-    await speak(wordText, { lang: card.speechLang || "zh-CN", repeat: 2 });
+    // Word repeated per setting
+    await speak(wordText, { lang: card.speechLang || "zh-CN", repeat: repeatCount });
 
-    // Example sentence twice (if available)
+    // Example sentence repeated per setting (if available)
     if (exampleText) {
       await new Promise(r => setTimeout(r, 450));
-      await speak(exampleText, { lang: card.example?.speechLang || card.speechLang || "zh-CN", repeat: 2 });
+      await speak(exampleText, { lang: card.example?.speechLang || card.speechLang || "zh-CN", repeat: repeatCount });
     }
   }
 
@@ -697,27 +701,30 @@
   function setupActionButtons() {
     els.speakWordBtn.addEventListener("click", () => {
       if (state.currentCard) {
+        const r = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
         speak(state.currentCard.speechText || state.currentCard.front, {
           lang: state.currentCard.speechLang || "zh-CN",
-          repeat: 2
+          repeat: r
         });
       }
     });
 
     els.speakSentenceBtn.addEventListener("click", () => {
       if (state.currentCard?.example?.text) {
+        const r = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
         speak(state.currentCard.example.speechText || state.currentCard.example.text, {
           lang: state.currentCard.example.speechLang || state.currentCard.speechLang || "zh-CN",
-          repeat: 2
+          repeat: r
         });
       }
     });
 
     els.speakExampleBtn.addEventListener("click", () => {
       if (state.currentCard?.example?.text) {
+        const r = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
         speak(state.currentCard.example.speechText || state.currentCard.example.text, {
           lang: state.currentCard.example.speechLang || state.currentCard.speechLang || "zh-CN",
-          repeat: 2
+          repeat: r
         });
       }
     });
@@ -1075,6 +1082,16 @@
       saveStoredState();
     });
 
+    const currentRepeat = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
+    els.wordRepeatCount.value = currentRepeat;
+    els.wordRepeatLabel.textContent = currentRepeat;
+    els.wordRepeatCount.addEventListener("input", (e) => {
+      const val = Math.max(1, Math.min(10, parseInt(e.target.value, 10) || 1));
+      state.store.settings.wordRepeat = val;
+      els.wordRepeatLabel.textContent = val;
+      saveStoredState();
+    });
+
     els.voiceSelect.addEventListener("change", (e) => {
       state.store.settings.selectedVoice = e.target.value;
       saveStoredState();
@@ -1236,7 +1253,11 @@
         if (!state.quizAnswered) {
           // Play word audio
           if (state.currentCard) {
-            speak(state.currentCard.speechText || state.currentCard.front, { repeat: 1 });
+            const r = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
+            speak(state.currentCard.speechText || state.currentCard.front, {
+              lang: state.currentCard.speechLang || "zh-CN",
+              repeat: r
+            });
           }
         } else {
           // Advance to next card

@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=3" />
+  <link rel="stylesheet" href="style.css?v=4" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -281,12 +281,21 @@
           <div class="setting-row">
             <div class="setting-info">
               <label for="autoSpeakToggle">Auto-read on card presentation</label>
-              <p>Read word twice, then example sentence twice when a new card appears</p>
+              <p>Read word &amp; sentence aloud when a new card appears</p>
             </div>
             <label class="toggle-switch">
               <input type="checkbox" id="autoSpeakToggle" checked />
               <span class="slider"></span>
             </label>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="wordRepeatCount">Word repeat count</label>
+              <p>How many times to read the word aloud per card (<span id="wordRepeatLabel">2</span>×)</p>
+            </div>
+            <div class="setting-control">
+              <input type="number" id="wordRepeatCount" class="input-number" min="1" max="5" step="1" value="2" />
+            </div>
           </div>
         </div>
 
@@ -337,7 +346,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Load Scripts -->
-  <script src="srs.js?v=3"></script>
-  <script src="app.js?v=3"></script>
+  <script src="srs.js?v=4"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
