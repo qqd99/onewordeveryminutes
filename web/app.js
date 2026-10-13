@@ -326,10 +326,13 @@
       activeAudioEl = audio;
       audio.volume = volume;
       let finished = false;
+      let playbackWatchdog = null;
       const settle = (success) => {
         if (finished) return;
         finished = true;
-        clearTimeout(watchdog);
+        clearTimeout(startWatchdog);
+        clearTimeout(playbackWatchdog);
+        audio.onplaying = null;
         audio.onended = null;
         audio.onerror = null;
         if (!success) {
@@ -341,13 +344,20 @@
       };
       const cancel = () => settle(false);
       cancelActivePlayback = cancel;
-      // A blocked online provider must not delay each pronunciation by 12 s.
-      const watchdog = setTimeout(() => settle(false), 3200);
+      const started = () => {
+        if (finished || playbackWatchdog !== null) return;
+        clearTimeout(startWatchdog);
+        // A correctly playing sentence can last much longer than 3 seconds.
+        playbackWatchdog = setTimeout(() => settle(false), 45000);
+      };
+      // Skip blocked or hung providers quickly, but never cut off healthy audio.
+      const startWatchdog = setTimeout(() => settle(false), 3200);
+      audio.onplaying = started;
       audio.onended = () => settle(true);
       audio.onerror = () => settle(false);
       try {
         const playing = audio.play();
-        if (playing?.catch) playing.catch(() => settle(false));
+        if (playing?.then) playing.then(started, () => settle(false));
       } catch (_) {
         settle(false);
       }
