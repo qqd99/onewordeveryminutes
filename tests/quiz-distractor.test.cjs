@@ -78,7 +78,7 @@ function harness(progress = {}, vocabulary = cards) {
     sandbox.answer(choice, classes.get(choice.id));
     return choice;
   }
-  return { state, quiz, classes, toasts, choose, rate: sandbox.rate };
+  return { state, quiz, classes, toasts, choose, rate: sandbox.rate, answer: sandbox.answer };
 }
 
 test("wrong answer forgets both the displayed word and a previously remembered distractor", () => {
@@ -138,10 +138,13 @@ test("double clicking a wrong choice cannot rate either card twice", () => {
   assert.equal(fakeButton.disabled, true);
   const prevHao = h.state.store.progress.hao;
   const prevCuo = h.state.store.progress.cuo;
-  // The same closure's event would return immediately in the real webpage.
+  h.answer(selected, fakeButton);
   assert.equal(h.state.quizAnswered, true);
+  assert.equal(h.state.store.progress.hao, prevHao);
+  assert.equal(h.state.store.progress.cuo, prevCuo);
   assert.equal(prevHao.forgotten, 1);
   assert.equal(prevCuo.forgotten, 1);
+  assert.equal(h.toasts.length, 1);
 });
 
 test("a later manual rating corrects the shown word without undoing distractor Forget", () => {
