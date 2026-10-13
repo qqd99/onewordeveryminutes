@@ -240,3 +240,36 @@ test("SRS New Word action clears old review counters", () => {
   assert.match(newAction, /defaultCardProgress\(\)/);
   assert.doesNotMatch(newAction, /progress\.lastReviewedAt = 0/);
 });
+
+test("repeated Remember/Forget actions correct the same review instead of double counting", () => {
+  const first = source.indexOf("  function rateCurrentCard(");
+  const last = source.indexOf("  function handleQuizAnswer(", first);
+  assert.ok(first > 0 && last > first);
+  const srs = fs.readFileSync(path.join(root, "web/srs.js"), "utf8");
+  const state = {
+    currentCard: { id: "word-1" },
+    currentReviewBaseline: null,
+    store: { progress: { "word-1": { lastShownAt: 123 } } }
+  };
+  const context = {
+    state, getSrsDisplayMinutes: () => 30,
+    saveStoredState() {}, updateDashboardCounts() {}
+  };
+  vm.runInNewContext(srs + "\nglobalThis.srsReady = true;" +
+    source.slice(first, last) + "\nglobalThis.rate = rateCurrentCard;", context);
+  context.rate("remember");
+  context.rate("remember");
+  assert.equal(state.store.progress["word-1"].remembered, 1);
+  assert.equal(state.store.progress["word-1"].repetitions, 1);
+  context.rate("forget");
+  assert.equal(state.store.progress["word-1"].remembered, 0);
+  assert.equal(state.store.progress["word-1"].forgotten, 1);
+});
+
+test("audio preferences survive backup restore without changing notification permissions", () => {
+  const importCode = source.slice(source.indexOf("// Backups also contain the user's audio preferences."),
+    source.indexOf("saveStoredState();", source.indexOf("// Backups also contain the user's audio preferences.")));
+  assert.match(importCode, /\["autoSpeak", "readSentences"\]/);
+  assert.doesNotMatch(importCode, /state\.store\.settings\.notificationsEnabled = /);
+  assert.doesNotMatch(importCode, /state\.store\.settings\.reminderEnabled = /);
+});
