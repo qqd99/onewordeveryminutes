@@ -1724,6 +1724,43 @@
           count += 1;
         }
         if (!count) throw new Error("No matching vocabulary progress found in backup.");
+
+        // Backups also contain the user's audio preferences. Restore only
+        // validated known fields, keeping reminder/notification permissions
+        // local to this browser.
+        const importedSettings = imported.settings || imported.payload?.settings;
+        if (importedSettings && typeof importedSettings === "object" &&
+            !Array.isArray(importedSettings)) {
+          for (const key of ["autoSpeak", "readSentences"]) {
+            if (typeof importedSettings[key] === "boolean") {
+              state.store.settings[key] = importedSettings[key];
+            }
+          }
+          if (["auto", "online", "speechSynthesis"].includes(importedSettings.audioEngine)) {
+            state.store.settings.audioEngine = importedSettings.audioEngine;
+          }
+          const volume = Number(importedSettings.volume);
+          if (importedSettings.volume != null && Number.isFinite(volume)) {
+            state.store.settings.volume = Math.min(100, Math.max(0, volume));
+          }
+          const speed = Number(importedSettings.speed);
+          if (importedSettings.speed != null && Number.isFinite(speed)) {
+            state.store.settings.speed = Math.min(1.5, Math.max(0.5, speed));
+          }
+          const repeats = Number(importedSettings.wordRepeat);
+          if (Number.isFinite(repeats) && repeats >= 1) {
+            state.store.settings.wordRepeat = Math.min(5, Math.round(repeats));
+          }
+          els.autoSpeakToggle.checked = state.store.settings.autoSpeak !== false;
+          els.readSentencesToggle.checked = state.store.settings.readSentences !== false;
+          els.audioEngineSelect.value = state.store.settings.audioEngine || "auto";
+          els.volumeRange.value = state.store.settings.volume;
+          els.volumeLabel.textContent = `${state.store.settings.volume}%`;
+          els.speedRange.value = state.store.settings.speed;
+          els.speedLabel.textContent = `${state.store.settings.speed}x`;
+          els.wordRepeatCount.value = state.store.settings.wordRepeat;
+          els.wordRepeatLabel.textContent = state.store.settings.wordRepeat;
+        }
         saveStoredState();
         updateDashboardCounts();
         renderDeckList();
@@ -1868,6 +1905,9 @@
   ------------------------------------------------------------- */
   async function init() {
     loadStoredState();
+    // The first loadVoices() call ran before stored preferences were read.
+    // Populate the selected device voice after restoring those preferences.
+    loadVoices();
     initTheme();
     setupActionButtons();
     setupDeckBrowser();
