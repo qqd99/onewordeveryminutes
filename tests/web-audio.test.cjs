@@ -134,3 +134,109 @@ test("the deployed web vocabulary has English-only definitions", () => {
     }
   }
 });
+
+function createNativeHarness({ readSentences = false, failSecond = false } = {}) {
+  const nativeSpoken = [];
+  const onlineSpoken = [];
+  const state = {
+    store: { settings: {
+      volume: 100, autoSpeak: true, readSentences,
+      audioEngine: "auto", wordRepeat: 2, speed: 0.85
+    } },
+    availableVoices: [] // This is common while Chromium loads its voice list.
+  };
+  const voiceEngine = {
+    paused: false,
+    getVoices: () => [],
+    cancel() {},
+    resume() {},
+    speak(utterance) {
+      nativeSpoken.push(utterance.text);
+      const attempt = nativeSpoken.length;
+      queueMicrotask(() => utterance.onstart?.());
+      queueMicrotask(() => {
+        if (failSecond && attempt === 2) utterance.onerror?.({ error: "voice-unavailable" });
+        else utterance.onend?.();
+      });
+    }
+  };
+  class FakeOnlineAudio {
+    constructor(url) { this.url = url; }
+    pause() {}
+    play() {
+      const uri = new URL(this.url);
+      onlineSpoken.push(uri.searchParams.get("q") || uri.searchParams.get("audio"));
+      queueMicrotask(() => this.onended?.());
+      return Promise.resolve();
+    }
+  }
+  class FakeUtterance {
+    constructor(text) { this.text = text; }
+  }
+  const context = {
+    window: { speechSynthesis: voiceEngine },
+    Audio: FakeOnlineAudio,
+    SpeechSynthesisUtterance: FakeUtterance,
+    state, els: { voiceSelect: null },
+    showToast() {}, console: { warn() {} },
+    setTimeout: (fn, delay) => delay <= 500 ? queueMicrotask(fn) : setTimeout(fn, delay),
+    clearTimeout: (id) => { if (id !== undefined && id !== null) clearTimeout(id); },
+    URL
+  };
+  vm.runInNewContext(audioModule +
+    "\nglobalThis.audioApi = { speak, playCardSequence, stopAudio };", context);
+  return { api: context.audioApi, state, nativeSpoken, onlineSpoken };
+}
+
+test("word begins immediately with sentence option off, even before voices load", async () => {
+  const h = createNativeHarness({ readSentences: false });
+  const playback = h.api.playCardSequence(card);
+  // The first word must already be submitted to native speech synchronously,
+  // without waiting for the example or a Google TTS timeout.
+  assert.deepEqual(h.nativeSpoken, ["你好"]);
+  await playback;
+  assert.deepEqual(h.nativeSpoken, ["你好", "你好"]);
+  assert.deepEqual(h.onlineSpoken, []);
+});
+
+test("native voice failure on the second repeat falls back only once", async () => {
+  const h = createNativeHarness({ readSentences: false, failSecond: true });
+  await h.api.playCardSequence(card);
+  assert.deepEqual(h.nativeSpoken, ["你好", "你好"]);
+  assert.deepEqual(h.onlineSpoken, ["你好"]);
+});
+
+test("sentence-on sequence uses the native voice for both segments", async () => {
+  const h = createNativeHarness({ readSentences: true });
+  await h.api.playCardSequence(card);
+  assert.deepEqual(h.nativeSpoken,
+    ["你好", "你好", "你好，朋友！", "你好，朋友！"]);
+});
+
+test("initial web card attempts automatic speech and does not restart on quiz answer", () => {
+  assert.match(source, /renderCard\(initialCard, \{ autoSpeak: true \}\)/);
+  const answer = source.slice(source.indexOf("  function handleQuizAnswer("),
+    source.indexOf("  function presentNextCard("));
+  assert.doesNotMatch(answer, /playCardSequence\(/);
+});
+
+test("SRS timing includes configured hours and seconds", () => {
+  const first = source.indexOf("  function getSrsDisplayMinutes()");
+  const last = source.indexOf("  function formatTimeInterval(", first);
+  assert.ok(first > 0 && last > first);
+  const ctx = { state: { store: { settings: {
+    intervalHours: 1, intervalMinutes: 2, intervalSeconds: 30
+  } } } };
+  vm.runInNewContext(source.slice(first, last) +
+    "\nglobalThis.calculate = getSrsDisplayMinutes", ctx);
+  assert.equal(ctx.calculate(), 63);
+});
+
+test("SRS New Word action clears old review counters", () => {
+  const pos = source.indexOf("els.newWordBtn.addEventListener");
+  const next = source.indexOf("els.forgetBtn.addEventListener", pos);
+  assert.ok(pos >= 0 && next > pos);
+  const newAction = source.slice(pos, next);
+  assert.match(newAction, /defaultCardProgress\(\)/);
+  assert.doesNotMatch(newAction, /progress\.lastReviewedAt = 0/);
+});
