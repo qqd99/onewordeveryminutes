@@ -9,6 +9,7 @@ const els = {
   volumePercent: document.querySelector("#volumePercent"),
   volumeValue: document.querySelector("#volumeValue"),
   autoSpeak: document.querySelector("#autoSpeak"),
+  readSentences: document.querySelector("#readSentences"),
   save: document.querySelector("#save"),
   term: document.querySelector("#term"),
   reading: document.querySelector("#reading"),
@@ -214,6 +215,7 @@ function renderDashboard(data) {
     intervalMinutes: 30,
     autoHideSeconds: 10,
     autoSpeak: true,
+    readSentences: true,
     activePackId: null
   };
   const vocabulary = data?.vocabulary || {};
@@ -286,6 +288,7 @@ function renderDashboard(data) {
   els.volumePercent.value = Math.min(100, Math.max(0, Number(settings.volumePercent ?? 100)));
   els.volumeValue.textContent = `${Math.round(Number(els.volumePercent.value) || 0)}%`;
   els.autoSpeak.checked = settings.autoSpeak !== false;
+  els.readSentences.checked = settings.readSentences !== false;
   renderPackOptions(packs, activePackId);
 
   els.wordStat.textContent = Number(data.stats?.total ?? vocabulary.count ?? 0).toLocaleString();
@@ -309,8 +312,11 @@ function renderDashboard(data) {
   const answerCloseText = settings.closeAfterAnswer !== false
     ? "Answered cards reveal the result and close immediately."
     : "Answered cards stay open until you close them.";
+  const automaticAudio = settings.autoSpeak === false
+    ? "Automatic audio is off"
+    : `Automatic audio: word ×2${settings.readSentences === false ? "" : ", then sentence ×2"} in ${pack.speechLang || "the selected language"} at ${Math.round(Number(settings.volumePercent ?? 100))}% volume`;
   els.speechStatus.textContent =
-    `Automatic audio: word ×2, then sentence ×2 in ${pack.speechLang || "the selected language"} at ${Math.round(Number(settings.volumePercent ?? 100))}% volume. Unanswered cards use the saved countdown after playback; ${answerCloseText}`;
+    `${automaticAudio}. Unanswered cards use the saved countdown after playback; ${answerCloseText}`;
 
   if (data.dataProtection?.syncBackedUp) {
     els.dataStatus.textContent =
@@ -427,6 +433,7 @@ function selectedSettings() {
     closeAfterAnswer: els.closeAfterAnswer.checked,
     volumePercent: selectedVolumePercent(),
     autoSpeak: els.autoSpeak.checked,
+    readSentences: els.readSentences.checked,
     activePackId: els.pack.value
   };
 }
