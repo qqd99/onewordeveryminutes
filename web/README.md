@@ -89,3 +89,14 @@ On GitHub Pages, commits merged into `main` trigger `.github/workflows/deploy.ym
 - Initial cards attempt pronunciation, and answering a quiz no longer restarts or interrupts the reading.
 - New Word now resets review history properly, SRS uses the full hours/minutes/seconds cadence, translations ignore obsolete results, and backup imports accept only known vocabulary IDs.
 - New builds refresh the installed PWA's service-worker cache and JavaScript assets.
+
+## Independent word and sentence auto-reading controls (v10)
+
+**Settings → Audio & Pronunciation** now offers two separate switches:
+
+- **Read word**: pronounce the current vocabulary word automatically.
+- **Read sentence**: pronounce the example sentence automatically.
+
+Both enabled reads the word before the sentence. Read word alone plays only the word; Read sentence alone plays only the sentence (without waiting for a muted word); both off disables automatic pronunciation. The manual **🔊 Word** and **🔊 Sentence** buttons work regardless of these settings.
+
+The new **Read word** setting preserves existing users' former **Auto-read on card presentation** value. Audio settings saved in older web backups are also migrated when imported. Settings live in browser storage; GitHub Pages publishes the updated `web/` folder after a merge to `main`.

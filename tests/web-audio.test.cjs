@@ -16,7 +16,7 @@ function createAudioHarness(overrides = {}, failText = null, hangText = null) {
   const toasts = [];
   const settings = {
     volume: 100,
-    autoSpeak: true,
+    readWords: true,
     readSentences: true,
     wordRepeat: 2,
     audioEngine: "online",
@@ -115,10 +115,13 @@ test("new playback cancels stale word and prevents its sentence", async () => {
   assert.deepEqual(h.spoken, ["你好", "再见"]);
 });
 
-test("web HTML exposes sentence switch and JS saves the preference", () => {
+test("web HTML exposes two independent word and sentence switches", () => {
   const html = fs.readFileSync(path.join(root, "web/index.html"), "utf8");
-  assert.match(html, /id="readSentencesToggle"/);
+  assert.match(html, /id="readWordToggle"/);
+  assert.match(html, /id="readSentenceToggle"/);
+  assert.match(source, /readWords: true/);
   assert.match(source, /readSentences: true/);
+  assert.match(source, /state\.store\.settings\.readWords = e\.target\.checked/);
   assert.match(source, /state\.store\.settings\.readSentences = e\.target\.checked/);
 });
 
@@ -140,7 +143,7 @@ function createNativeHarness({ readSentences = false, failSecond = false } = {})
   const onlineSpoken = [];
   const state = {
     store: { settings: {
-      volume: 100, autoSpeak: true, readSentences,
+      volume: 100, readWords: true, readSentences,
       audioEngine: "auto", wordRepeat: 2, speed: 0.85
     } },
     availableVoices: [] // This is common while Chromium loads its voice list.
@@ -214,7 +217,7 @@ test("sentence-on sequence uses the native voice for both segments", async () =>
 });
 
 test("initial web card attempts automatic speech and does not restart on quiz answer", () => {
-  assert.match(source, /renderCard\(initialCard, \{ autoSpeak: true \}\)/);
+  assert.match(source, /renderCard\(initialCard, \{ autoPlay: true \}\)/);
   const answer = source.slice(source.indexOf("  function handleQuizAnswer("),
     source.indexOf("  function presentNextCard("));
   assert.doesNotMatch(answer, /playCardSequence\(/);
@@ -269,7 +272,9 @@ test("repeated Remember/Forget actions correct the same review instead of double
 test("audio preferences survive backup restore without changing notification permissions", () => {
   const importCode = source.slice(source.indexOf("// Backups also contain the user's audio preferences."),
     source.indexOf("saveStoredState();", source.indexOf("// Backups also contain the user's audio preferences.")));
-  assert.match(importCode, /\["autoSpeak", "readSentences"\]/);
+  assert.match(importCode, /importedSettings\.readWords/);
+  assert.match(importCode, /importedSettings\.readSentences/);
+  assert.match(importCode, /importedSettings\.autoSpeak/);
   assert.doesNotMatch(importCode, /state\.store\.settings\.notificationsEnabled = /);
   assert.doesNotMatch(importCode, /state\.store\.settings\.reminderEnabled = /);
 });
@@ -340,4 +345,63 @@ test("online audio that never starts is cancelled quickly", async () => {
   timers.find(handle => handle.ms === 3200).callback();
   assert.equal(await result, false);
   assert.equal(active.paused, true);
+});
+
+test("word off, sentence on: plays only the sentence automatically", async () => {
+  const h = createAudioHarness({ readWords: false, readSentences: true });
+  await h.api.playCardSequence(card);
+  assert.deepEqual(h.spoken, ["你好，朋友！", "你好，朋友！"]);
+});
+
+test("word off, sentence off: does not play either segment automatically", async () => {
+  const h = createAudioHarness({ readWords: false, readSentences: false });
+  await h.api.playCardSequence(card);
+  assert.deepEqual(h.spoken, []);
+});
+
+test("word on, sentence off: automatic playback still says word twice", async () => {
+  const h = createAudioHarness({ readWords: true, readSentences: false });
+  await h.api.playCardSequence(card);
+  assert.deepEqual(h.spoken, ["你好", "你好"]);
+});
+
+test("word off is not a master mute: manually requested word still plays", async () => {
+  const h = createAudioHarness({ readWords: false, readSentences: false });
+  const ok = await h.api.speak(card.front, { lang: "zh-CN", repeat: 1 });
+  assert.equal(ok, true);
+  assert.deepEqual(h.spoken, ["你好"]);
+});
+
+test("old saved autoSpeak preference migrates into the new Read word option", () => {
+  const first = source.indexOf("  function loadStoredState() {");
+  const last = source.indexOf("  function saveStoredState() {", first);
+  assert.ok(first > 0 && last > first);
+  const state = { store: {
+    settings: { readWords: true, readSentences: true },
+    progress: {}, lastCardId: null, currentCardId: null
+  } };
+  const stored = { settings: { autoSpeak: false, readSentences: true } };
+  const ctx = {
+    state,
+    localStorage: { getItem: () => JSON.stringify(stored) },
+    console: { warn() {} }
+  };
+  vm.runInNewContext('const STORAGE_KEY = "vocab_srs_state_v1";\n' +
+    source.slice(first, last) + '\nglobalThis.load = loadStoredState;', ctx);
+  ctx.load();
+  assert.equal(state.store.settings.readWords, false);
+  assert.equal(state.store.settings.readSentences, true);
+  assert.equal(Object.hasOwn(state.store.settings, "autoSpeak"), false);
+  stored.settings = { readWords: true, autoSpeak: false, readSentences: false };
+  ctx.load();
+  assert.equal(state.store.settings.readWords, true, "New setting takes precedence");
+  assert.equal(state.store.settings.readSentences, false);
+});
+
+test("UI has no master autoplay toggle that blocks sentence-only playback", () => {
+  const render = source.slice(source.indexOf("  function renderCard("),
+    source.indexOf("  function rateCurrentCard("));
+  assert.match(render, /settings\.readWords !== false/);
+  assert.match(render, /settings\.readSentences !== false/);
+  assert.doesNotMatch(render, /settings\.autoSpeak/);
 });

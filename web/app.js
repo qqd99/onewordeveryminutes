@@ -28,7 +28,7 @@
         reminderEnabled: false,
         volume: 100,
         speed: 0.85,
-        autoSpeak: true,
+        readWords: true,
         readSentences: true,
         wordRepeat: 2,
         audioEngine: "auto",
@@ -137,8 +137,8 @@
     volumeLabel: $("#volumeLabel"),
     speedRange: $("#speedRange"),
     speedLabel: $("#speedLabel"),
-    autoSpeakToggle: $("#autoSpeakToggle"),
-    readSentencesToggle: $("#readSentencesToggle"),
+    readWordToggle: $("#readWordToggle"),
+    readSentenceToggle: $("#readSentenceToggle"),
     wordRepeatCount: $("#wordRepeatCount"),
     wordRepeatLabel: $("#wordRepeatLabel"),
     exportDataBtn: $("#exportDataBtn"),
@@ -167,6 +167,12 @@
           lastCardId: parsed.lastCardId || null,
           currentCardId: parsed.currentCardId || null
         };
+        // Migrate the old word preference without changing sentence playback.
+        if (typeof parsed.settings?.readWords !== "boolean" &&
+            typeof parsed.settings?.autoSpeak === "boolean") {
+          state.store.settings.readWords = parsed.settings.autoSpeak;
+        }
+        delete state.store.settings.autoSpeak;
         if (state.store.settings.intervalHours === undefined) state.store.settings.intervalHours = 0;
         if (state.store.settings.intervalSeconds === undefined) state.store.settings.intervalSeconds = 0;
       }
@@ -494,26 +500,33 @@
 
   async function playCardSequence(card) {
     if (!card) return;
+    const readWord = state.store.settings.readWords !== false;
+    const readSentence = state.store.settings.readSentences !== false;
     const generation = stopAudio();
-    const repeatCount = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
-    const wordPlayed = await speakSegment(card.speechText || card.front, {
-      lang: card.speechLang || "zh-CN",
-      repeat: repeatCount,
-      generation
-    });
-    if (!isCurrentAudio(generation)) return;
+    if (!readWord && !readSentence) return;
 
-    if (!wordPlayed) {
-      if ((state.store.settings.volume ?? 100) > 0) {
-        console.warn("Could not play the word; example playback was not substituted.");
-        showToast("Word audio unavailable. Try Hear Word or change the audio engine.");
+    const repeatCount = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
+    if (readWord) {
+      const wordPlayed = await speakSegment(card.speechText || card.front, {
+        lang: card.speechLang || "zh-CN",
+        repeat: repeatCount,
+        generation
+      });
+      if (!isCurrentAudio(generation)) return;
+      if (!wordPlayed) {
+        // Do not silently replace a failed requested word with its sentence.
+        if ((state.store.settings.volume ?? 100) > 0) {
+          console.warn("Could not play the word; example playback was not substituted.");
+          showToast("Word audio unavailable. Try Hear Word or change the audio engine.");
+        }
+        return;
       }
-      return;
     }
 
     const exampleText = card.example?.speechText || card.example?.text;
-    if (state.store.settings.readSentences !== false && exampleText) {
-      await new Promise(resolve => setTimeout(resolve, 450));
+    if (readSentence && exampleText) {
+      // Sentence-only mode starts immediately without a word or pause.
+      if (readWord) await new Promise(resolve => setTimeout(resolve, 450));
       if (!isCurrentAudio(generation)) return;
       await speakSegment(exampleText, {
         lang: card.example?.speechLang || card.speechLang || "zh-CN",
@@ -680,10 +693,10 @@
     return result;
   }
 
-  function renderCard(card, { autoSpeak = true } = {}) {
+  function renderCard(card, { autoPlay = true } = {}) {
     // Avoid double-cancelling speech right before a new reading starts.
     // playCardSequence() handles cancellation for spoken cards.
-    if (!autoSpeak || state.store.settings.autoSpeak === false) stopAudio();
+    if (!autoPlay || (state.store.settings.readWords === false && state.store.settings.readSentences === false)) stopAudio();
     state.currentCard = card;
     state.quizAnswered = false;
     state.selectedChoiceId = null;
@@ -796,9 +809,9 @@
     );
     saveStoredState();
 
-    // Start speech as soon as the card is ready, before re-rendering statistics.
-    // Sentence preference never disables word pronunciation.
-    if (autoSpeak && state.store.settings.autoSpeak !== false) {
+    // Either switch can independently trigger automatic pronunciation.
+    if (autoPlay && (state.store.settings.readWords !== false ||
+                     state.store.settings.readSentences !== false)) {
       playCardSequence(card);
     }
     updateDashboardCounts();
@@ -850,7 +863,7 @@
     // Do not restart audio on answer: the word may still be playing.
   }
 
-  function presentNextCard({ autoSpeak = true } = {}) {
+  function presentNextCard({ autoPlay = true } = {}) {
     if (!state.activePack) return;
     state.store.lastCardId = state.currentCard ? state.currentCard.id : null;
     const nextCard = chooseNextCard(
@@ -860,7 +873,7 @@
       Date.now(),
       getSrsDisplayMinutes()
     );
-    renderCard(nextCard, { autoSpeak });
+    renderCard(nextCard, { autoPlay });
   }
 
   /* -------------------------------------------------------------
@@ -909,7 +922,7 @@
       saveStoredState();
       updateDashboardCounts();
       showToast("Card status set to New Word");
-      presentNextCard({ autoSpeak: true });
+      presentNextCard({ autoPlay: true });
     });
 
     els.forgetBtn.addEventListener("click", () => {
@@ -925,7 +938,7 @@
     });
 
     els.nextCardBtn.addEventListener("click", () => {
-      presentNextCard({ autoSpeak: true });
+      presentNextCard({ autoPlay: true });
     });
   }
 
@@ -1096,7 +1109,7 @@
       row.style.cursor = "pointer";
       row.addEventListener("click", () => {
         switchTab("study");
-        renderCard(card, { autoSpeak: false });
+        renderCard(card, { autoPlay: false });
       });
 
       els.deckWordList.appendChild(row);
@@ -1187,7 +1200,7 @@
 
   function triggerReminder() {
     if (!state.activePack) return;
-    presentNextCard({ autoSpeak: state.store.settings.autoSpeak });
+    presentNextCard({ autoPlay: true });
 
     // Play subtle audio cue / notification
     if (state.store.settings.notificationsEnabled && "Notification" in window && Notification.permission === "granted") {
@@ -1643,13 +1656,13 @@
       });
     }
 
-    els.autoSpeakToggle.checked = state.store.settings.autoSpeak !== false;
-    els.autoSpeakToggle.addEventListener("change", (e) => {
-      state.store.settings.autoSpeak = e.target.checked;
+    els.readWordToggle.checked = state.store.settings.readWords !== false;
+    els.readWordToggle.addEventListener("change", (e) => {
+      state.store.settings.readWords = e.target.checked;
       saveStoredState();
     });
-    els.readSentencesToggle.checked = state.store.settings.readSentences !== false;
-    els.readSentencesToggle.addEventListener("change", (e) => {
+    els.readSentenceToggle.checked = state.store.settings.readSentences !== false;
+    els.readSentenceToggle.addEventListener("change", (e) => {
       state.store.settings.readSentences = e.target.checked;
       saveStoredState();
     });
@@ -1734,10 +1747,14 @@
         const importedSettings = imported.settings || imported.payload?.settings;
         if (importedSettings && typeof importedSettings === "object" &&
             !Array.isArray(importedSettings)) {
-          for (const key of ["autoSpeak", "readSentences"]) {
-            if (typeof importedSettings[key] === "boolean") {
-              state.store.settings[key] = importedSettings[key];
-            }
+          // Support both new and old backups; the switches remain independent.
+          const importedReadWords = typeof importedSettings.readWords === "boolean"
+            ? importedSettings.readWords : importedSettings.autoSpeak;
+          if (typeof importedReadWords === "boolean") {
+            state.store.settings.readWords = importedReadWords;
+          }
+          if (typeof importedSettings.readSentences === "boolean") {
+            state.store.settings.readSentences = importedSettings.readSentences;
           }
           if (["auto", "online", "speechSynthesis"].includes(importedSettings.audioEngine)) {
             state.store.settings.audioEngine = importedSettings.audioEngine;
@@ -1754,8 +1771,8 @@
           if (Number.isFinite(repeats) && repeats >= 1) {
             state.store.settings.wordRepeat = Math.min(5, Math.round(repeats));
           }
-          els.autoSpeakToggle.checked = state.store.settings.autoSpeak !== false;
-          els.readSentencesToggle.checked = state.store.settings.readSentences !== false;
+          els.readWordToggle.checked = state.store.settings.readWords !== false;
+          els.readSentenceToggle.checked = state.store.settings.readSentences !== false;
           els.audioEngineSelect.value = state.store.settings.audioEngine || "auto";
           els.volumeRange.value = state.store.settings.volume;
           els.volumeLabel.textContent = `${state.store.settings.volume}%`;
@@ -1818,7 +1835,7 @@
       saveStoredState();
       updateDashboardCounts();
       renderDeckList();
-      presentNextCard({ autoSpeak: false });
+      presentNextCard({ autoPlay: false });
       closeResetModal();
       showToast("Progress has been reset.");
     });
@@ -1885,7 +1902,7 @@
           }
         } else {
           // Advance to next card
-          presentNextCard({ autoSpeak: true });
+          presentNextCard({ autoPlay: true });
         }
       } else if (key === "r" || key === "R") {
         els.rememberBtn.click();
@@ -1946,7 +1963,7 @@
           saveStoredState();
           updateDashboardCounts();
           renderDeckList();
-          presentNextCard({ autoSpeak: false });
+          presentNextCard({ autoPlay: false });
         }
       });
 
@@ -1967,7 +1984,7 @@
 
       // A loaded card is a presentation too. Some browsers require an
       // interaction before allowing audio; manual Hear Word remains available.
-      renderCard(initialCard, { autoSpeak: true });
+      renderCard(initialCard, { autoPlay: true });
       updateDashboardCounts();
       renderDeckList();
       scheduleNextReminder();
