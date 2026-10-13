@@ -17,6 +17,7 @@
     currentQuiz: null,
     quizAnswered: false,
     selectedChoiceId: null,
+    currentReviewBaseline: null,
     store: {
       settings: {
         theme: "light",
@@ -676,6 +677,7 @@
     state.currentCard = card;
     state.quizAnswered = false;
     state.selectedChoiceId = null;
+    state.currentReviewBaseline = null;
     state.store.currentCardId = card.id;
     saveStoredState();
 
@@ -792,6 +794,20 @@
     updateDashboardCounts();
   }
 
+  function rateCurrentCard(rating) {
+    if (!state.currentCard) return;
+    const id = state.currentCard.id;
+    if (!state.currentReviewBaseline) {
+      state.currentReviewBaseline = normalizeProgress(state.store.progress[id]);
+    }
+    const baseline = state.currentReviewBaseline;
+    state.store.progress[id] = rating === "remember"
+      ? reviewRemember(baseline, getSrsDisplayMinutes())
+      : reviewForget(baseline, getSrsDisplayMinutes());
+    saveStoredState();
+    updateDashboardCounts();
+  }
+
   function handleQuizAnswer(choice, clickedBtn) {
     if (state.quizAnswered) return;
     state.quizAnswered = true;
@@ -814,27 +830,12 @@
     els.revealedMeaning.textContent = `Meaning: ${state.currentQuiz.correctMeaning}`;
     els.revealedMeaning.hidden = false;
 
-    // Apply SRS algorithm
-    const now = Date.now();
-    const intervalMins = getSrsDisplayMinutes();
-    if (choice.isCorrect) {
-      state.store.progress[state.currentCard.id] = reviewRemember(
-        state.store.progress[state.currentCard.id],
-        intervalMins,
-        now
-      );
-      showToast("Correct! SRS interval increased.");
-    } else {
-      state.store.progress[state.currentCard.id] = reviewForget(
-        state.store.progress[state.currentCard.id],
-        intervalMins,
-        now
-      );
-      showToast("Incorrect. Word scheduled for review.");
-    }
-
-    saveStoredState();
-    updateDashboardCounts();
+    // Apply one rating per presentation. Manual Remember/Forget buttons can
+    // correct it without counting an additional review of the same card.
+    rateCurrentCard(choice.isCorrect ? "remember" : "forget");
+    showToast(choice.isCorrect
+      ? "Correct! SRS interval increased."
+      : "Incorrect. Word scheduled for review.");
 
     // Do not restart audio on answer: the word may still be playing.
   }
@@ -894,6 +895,7 @@
         ...defaultCardProgress(),
         lastShownAt: Date.now()
       };
+      state.currentReviewBaseline = null;
       saveStoredState();
       updateDashboardCounts();
       showToast("Card status set to New Word");
@@ -902,23 +904,13 @@
 
     els.forgetBtn.addEventListener("click", () => {
       if (!state.currentCard) return;
-      state.store.progress[state.currentCard.id] = reviewForget(
-        state.store.progress[state.currentCard.id],
-        getSrsDisplayMinutes()
-      );
-      saveStoredState();
-      updateDashboardCounts();
+      rateCurrentCard("forget");
       showToast("Marked as Forget (interval reset)");
     });
 
     els.rememberBtn.addEventListener("click", () => {
       if (!state.currentCard) return;
-      state.store.progress[state.currentCard.id] = reviewRemember(
-        state.store.progress[state.currentCard.id],
-        getSrsDisplayMinutes()
-      );
-      saveStoredState();
-      updateDashboardCounts();
+      rateCurrentCard("remember");
       showToast("Marked as Remember (interval increased)");
     });
 
@@ -1724,6 +1716,7 @@
           count += 1;
         }
         if (!count) throw new Error("No matching vocabulary progress found in backup.");
+        state.currentReviewBaseline = null;
 
         // Backups also contain the user's audio preferences. Restore only
         // validated known fields, keeping reminder/notification permissions
