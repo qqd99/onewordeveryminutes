@@ -127,6 +127,7 @@ async function playLoadedSource(blobUrl, repeat, generation, volume = 1) {
 }
 
 async function playOnline(text, { lang = "zh-CN", repeat = 2, generation, volume = 1 } = {}) {
+  if (generation !== playbackGeneration) throw new Error("Pronunciation was replaced by a newer request.");
   if (!navigator.onLine) throw new Error("Edge is offline, so online pronunciation is unavailable.");
   const clean = String(text || "").trim();
   if (!clean) throw new Error("There is no pronunciation text.");
@@ -149,6 +150,10 @@ async function playOnline(text, { lang = "zh-CN", repeat = 2, generation, volume
   // A source is accepted only after it downloads, decodes, and completes both
   // readings. Some providers return a status-200 non-audio response for a few words.
   for (const candidate of loaded) {
+    if (generation !== playbackGeneration) {
+      for (const item of loaded) if (item.blobUrl) URL.revokeObjectURL(item.blobUrl);
+      throw new Error("Pronunciation was replaced by a newer request.");
+    }
     if (candidate.error) {
       failures.push(`${candidate.source.name}: ${candidate.error.message}`);
       continue;
@@ -222,7 +227,9 @@ function speakOne(text, { lang, rate, voice, generation, volume = 1 }) {
     const timeout = setTimeout(() => {
       if (settled) return;
       settled = true;
-      reject(new Error("Web Speech did not start."));
+      activeUtterance = null;
+      try { speechSynthesis.cancel(); } catch (_) {}
+      reject(new Error("Web Speech did not finish."));
     }, 12000);
 
     utterance.onend = () => {
@@ -257,6 +264,7 @@ async function playWithSystemFallback(text, {
   }
 
   const voices = await waitForVoices();
+  if (generation !== playbackGeneration) throw new Error("Pronunciation was replaced by a newer request.");
   const primaryVoice = chooseVoiceForLanguage(voices, lang);
   const fallback = String(fallbackText || "").trim();
   const useFallback = !primaryVoice && Boolean(fallback);
@@ -264,6 +272,7 @@ async function playWithSystemFallback(text, {
   const spokenLang = useFallback ? fallbackLang : lang;
   const voice = chooseVoiceForLanguage(voices, spokenLang);
   const count = Math.min(4, Math.max(1, Number(repeat) || 2));
+  if (generation !== playbackGeneration) throw new Error("Pronunciation was replaced by a newer request.");
   speechSynthesis.cancel();
 
   for (let index = 0; index < count; index += 1) {
@@ -291,6 +300,7 @@ async function playPronunciation(message, generation) {
   try {
     return await playOnline(message.text, options);
   } catch (error) {
+    if (generation !== playbackGeneration) throw error;
     failures.push(error.message);
   }
 
@@ -303,10 +313,12 @@ async function playPronunciation(message, generation) {
         lang: message.fallbackLang || "en-US"
       });
     } catch (error) {
+      if (generation !== playbackGeneration) throw error;
       failures.push(`Reading fallback: ${error.message}`);
     }
   }
 
+  if (generation !== playbackGeneration) throw new Error("Pronunciation was replaced by a newer request.");
   try {
     return await playWithSystemFallback(message.text, options);
   } catch (error) {
@@ -330,6 +342,7 @@ async function playSpeechSequence(message, generation) {
       throw new Error("Pronunciation was replaced by a newer request.");
     }
     const result = await playPronunciation(segments[index], generation);
+    if (generation !== playbackGeneration) throw new Error("Pronunciation was replaced by a newer request.");
     results.push({ label: segments[index].label || `segment-${index + 1}`, ...result });
     if (index < segments.length - 1) await delay(800);
   }
