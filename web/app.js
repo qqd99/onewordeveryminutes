@@ -1208,6 +1208,7 @@
   ------------------------------------------------------------- */
   const translationCache = new Map();
   let translateDebounceTimer = null;
+  let translationGeneration = 0;
 
   async function fetchGoogleTranslate(text) {
     const trimmed = text.trim();
@@ -1217,7 +1218,14 @@
     }
 
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=en&dt=t&dt=rm&dt=bd&q=${encodeURIComponent(trimmed)}`;
-    const response = await fetch(url);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    let response;
+    try {
+      response = await fetch(url, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
     if (!response.ok) throw new Error(`HTTP error ${response.status}`);
     const data = await response.json();
 
@@ -1262,6 +1270,7 @@
   }
 
   async function executeTranslation() {
+    const requestId = ++translationGeneration;
     const text = els.translateInput.value.trim();
     if (!text) {
       els.translateResult.hidden = true;
@@ -1335,6 +1344,8 @@
         })
       );
 
+      // The input may have changed while multiple translations were loading.
+      if (requestId !== translationGeneration) return;
       els.resultChinese.textContent = text;
       els.resultPinyin.textContent = fullTrans.pinyin || "";
       els.resultPinyin.hidden = !fullTrans.pinyin;
@@ -1407,10 +1418,12 @@
         }
       }, 2000);
     } catch (err) {
-      console.error("Translation execution error:", err);
-      els.translateStatusIndicator.textContent = "Error translating text";
+      if (requestId === translationGeneration) {
+        console.error("Translation execution error:", err);
+        els.translateStatusIndicator.textContent = "Error translating text";
+      }
     } finally {
-      els.translateBtn.disabled = false;
+      if (requestId === translationGeneration) els.translateBtn.disabled = false;
     }
   }
 
@@ -1422,6 +1435,8 @@
     }
 
     els.translateInput.addEventListener("input", () => {
+      ++translationGeneration;
+      els.translateBtn.disabled = false;
       updateCharCount();
       if (translateDebounceTimer) clearTimeout(translateDebounceTimer);
       const text = els.translateInput.value.trim();
@@ -1441,6 +1456,9 @@
     });
 
     els.clearTranslateBtn.addEventListener("click", () => {
+      ++translationGeneration;
+      if (translateDebounceTimer) clearTimeout(translateDebounceTimer);
+      els.translateBtn.disabled = false;
       els.translateInput.value = "";
       updateCharCount();
       els.translateResult.hidden = true;
@@ -1685,23 +1703,31 @@
         const text = await file.text();
         const imported = JSON.parse(text);
 
-        // Merge progress: handles both direct backup format and Edge extension storage dump
-        const importedProgress = imported.progress || imported.chineseSrsBackupProgress || imported;
-        if (typeof importedProgress === "object" && importedProgress !== null) {
-          let count = 0;
-          for (const [id, val] of Object.entries(importedProgress)) {
-            if (val && typeof val === "object") {
-              state.store.progress[id] = normalizeProgress(val);
-              count += 1;
-            }
-          }
-          saveStoredState();
-          updateDashboardCounts();
-          renderDeckList();
-          showToast(`Successfully imported progress for ${count} cards!`);
-        } else {
+        // Accept web backups and the extension's progress payload. Never
+        // interpret a whole settings/metadata object as card progress.
+        const importedProgress = imported?.progress ??
+          imported?.payload?.progress ?? imported?.chineseSrsBackupProgress ??
+          (imported?.settings || imported?.schemaVersion ? null : imported);
+        if (!importedProgress || typeof importedProgress !== "object" ||
+            Array.isArray(importedProgress)) {
           throw new Error("Invalid progress backup format.");
         }
+
+        const validIds = new Set((state.catalog?.packs || []).flatMap(pack =>
+          pack.cards.map(card => card.id)
+        ));
+        let count = 0;
+        for (const [id, val] of Object.entries(importedProgress)) {
+          if (!validIds.has(id) || !val || typeof val !== "object" ||
+              Array.isArray(val)) continue;
+          state.store.progress[id] = normalizeProgress(val);
+          count += 1;
+        }
+        if (!count) throw new Error("No matching vocabulary progress found in backup.");
+        saveStoredState();
+        updateDashboardCounts();
+        renderDeckList();
+        showToast(`Successfully imported progress for ${count} cards!`);
       } catch (err) {
         alert(`Failed to import file: ${err.message}`);
       } finally {
@@ -1792,7 +1818,7 @@
       if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing ||
           ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName) ||
           document.activeElement?.isContentEditable ||
-          !els.tabButtons.some(btn => btn.dataset.tab === "study" && btn.classList.contains("active")) ||
+          ![...els.tabButtons].some(btn => btn.dataset.tab === "study" && btn.classList.contains("active")) ||
           els.resetModal.classList.contains("active")) {
         return;
       }
