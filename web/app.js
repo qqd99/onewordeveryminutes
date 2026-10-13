@@ -291,6 +291,11 @@
   }
 
   function chooseVoice(lang = "zh-CN") {
+    // Chromium often populates voices after initial page load. A missing
+    // explicitly named voice is not a reason to skip native TTS entirely.
+    if (!state.availableVoices.length && "speechSynthesis" in window) {
+      try { state.availableVoices = window.speechSynthesis.getVoices() || []; } catch (_) {}
+    }
     if (!state.availableVoices.length) return null;
     const target = String(lang).toLowerCase().replace("_", "-");
     const base = target.split("-")[0];
@@ -335,7 +340,8 @@
       };
       const cancel = () => settle(false);
       cancelActivePlayback = cancel;
-      const watchdog = setTimeout(() => settle(false), 12000);
+      // A blocked online provider must not delay each pronunciation by 12 s.
+      const watchdog = setTimeout(() => settle(false), 3200);
       audio.onended = () => settle(true);
       audio.onerror = () => settle(false);
       try {
@@ -371,7 +377,8 @@
 
   function speakNativeOnce(text, { lang, generation, voice }) {
     return new Promise(resolve => {
-      if (!isCurrentAudio(generation) || !("speechSynthesis" in window)) {
+      if (!isCurrentAudio(generation) || !("speechSynthesis" in window) ||
+          typeof SpeechSynthesisUtterance !== "function") {
         resolve(false);
         return;
       }
@@ -406,13 +413,14 @@
       utterance.onend = () => settle(true);
       utterance.onerror = () => settle(false);
 
-      // 1.2 seconds is too short for voices that initialize lazily.
+      // Attempt native playback immediately. Recover promptly if the browser
+      // never starts, rather than waiting five seconds before trying online.
       const startWatchdog = setTimeout(() => {
         if (!started) {
           settle(false);
           if (isCurrentAudio(generation)) recoverSpeechSynthesis();
         }
-      }, 5000);
+      }, 2000);
       const finishWatchdog = setTimeout(() => {
         settle(false);
         if (isCurrentAudio(generation)) recoverSpeechSynthesis();
@@ -429,7 +437,9 @@
 
   async function speakTextNative(text, { lang = "zh-CN", repeat = 1, delayMs = 400, generation } = {}) {
     const voice = chooseVoice(lang);
-    if (!voice && state.store.settings.audioEngine !== "speechSynthesis") return false;
+    // Even if getVoices() is empty, the browser may provide a working
+    // default Chinese voice when utterance.lang is set to zh-CN.
+    if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance !== "function") return false;
     for (let index = 0; index < repeat; index += 1) {
       if (!isCurrentAudio(generation)) return false;
       const success = await speakNativeOnce(text, { lang, generation, voice });
@@ -442,14 +452,23 @@
   async function speakSegment(text, { lang = "zh-CN", repeat = 2, generation } = {}) {
     if (!text || !isCurrentAudio(generation) || (state.store.settings.volume ?? 100) === 0) return false;
     const engine = state.store.settings.audioEngine || "auto";
-    let succeeded = false;
-    if (engine !== "online") {
-      succeeded = await speakTextNative(text, { lang, repeat, generation });
+    const count = Math.min(5, Math.max(1, Math.round(Number(repeat) || 2)));
+
+    // Play one repetition at a time. If a native voice fails on the second
+    // reading, online fallback only replaces that reading, not the whole word.
+    for (let index = 0; index < count; index += 1) {
+      if (!isCurrentAudio(generation)) return false;
+      let succeeded = false;
+      if (engine !== "online") {
+        succeeded = await speakTextNative(text, { lang, repeat: 1, generation });
+      }
+      if (!succeeded && isCurrentAudio(generation) && engine !== "speechSynthesis") {
+        succeeded = await playOnlineAudio(text, { lang, repeat: 1, generation });
+      }
+      if (!succeeded) return false;
+      if (index + 1 < count) await new Promise(resolve => setTimeout(resolve, 250));
     }
-    if (!succeeded && isCurrentAudio(generation) && engine !== "speechSynthesis") {
-      succeeded = await playOnlineAudio(text, { lang, repeat, generation });
-    }
-    return succeeded && isCurrentAudio(generation);
+    return isCurrentAudio(generation);
   }
 
   async function speak(text, { lang = "zh-CN", repeat = 2 } = {}) {
@@ -457,6 +476,7 @@
     const succeeded = await speakSegment(text, { lang, repeat, generation });
     if (!succeeded && isCurrentAudio(generation) && (state.store.settings.volume ?? 100) > 0) {
       console.warn("Word audio was unavailable:", text);
+      showToast("Audio could not start. Tap 🔊 Word to retry, or choose another Audio Engine in Settings.");
     }
     return succeeded;
   }
@@ -642,8 +662,9 @@
   }
 
   function renderCard(card, { autoSpeak = true } = {}) {
-    // An old card must not keep speaking after the next one appears.
-    stopAudio();
+    // Avoid double-cancelling speech right before a new reading starts.
+    // playCardSequence() handles cancellation for spoken cards.
+    if (!autoSpeak || state.store.settings.autoSpeak === false) stopAudio();
     state.currentCard = card;
     state.quizAnswered = false;
     state.selectedChoiceId = null;
@@ -755,12 +776,12 @@
     );
     saveStoredState();
 
-    updateDashboardCounts();
-
-    // Auto audio
-    if (autoSpeak && state.store.settings.autoSpeak) {
+    // Start speech as soon as the card is ready, before re-rendering statistics.
+    // Sentence preference never disables word pronunciation.
+    if (autoSpeak && state.store.settings.autoSpeak !== false) {
       playCardSequence(card);
     }
+    updateDashboardCounts();
   }
 
   function handleQuizAnswer(choice, clickedBtn) {
@@ -1855,7 +1876,9 @@
         );
       }
 
-      renderCard(initialCard, { autoSpeak: false });
+      // A loaded card is a presentation too. Some browsers require an
+      // interaction before allowing audio; manual Hear Word remains available.
+      renderCard(initialCard, { autoSpeak: true });
       updateDashboardCounts();
       renderDeckList();
       scheduleNextReminder();
