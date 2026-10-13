@@ -60,7 +60,7 @@ Then open `http://localhost:8080` in your browser.
 - **Audio Pronunciation**:
   - Web Speech API (`SpeechSynthesis`) with auto-selection of native Chinese voices (`zh-CN`, `cmn`).
   - Online audio fallback (Google & Youdao TTS) for unsupported platforms.
-  - Configurable repeat cadence (word twice, sentence twice) and speed/volume controls.
+  - Configurable word repetition, sentence playback toggle (enabled by default), and speed/volume controls. Word playback completes before a sentence begins, and answering a quiz no longer restarts speech.
 - **Word List & Deck Browser**: Search and filter all 1,000 HSK words by status (*Due*, *Reviewed*, *New*, or *All*). Click any word to practice it immediately or listen to pronunciation.
 - **Study Modes**:
   - **Self-Paced Study**: Review at your own speed with keyboard shortcuts (`1`, `2`, `3` for answers, `Space` for audio/next, `R` for Remember, `F` for Forget, `N` for New Word).
@@ -73,3 +73,11 @@ Then open `http://localhost:8080` in your browser.
   - Works 100% offline via Service Worker cache.
   - Installable to home screen on iOS, Android, macOS, and Windows.
 - **Theme Support**: Dark mode and Light mode with persistent preferences.
+
+## Automatic sentence pronunciation
+
+Open **Settings → Audio & Pronunciation**. Turn off **Read example sentences automatically** to hear only each card’s Chinese word. The preference is saved in the browser and included in progress backups. You can still click **Sentence** or the example card's 🔊 button to hear a sentence manually.
+
+The audio player waits for the word to finish before reading the example, cancels any stale audio when a different card or manual playback takes over, and does not substitute sentence audio when word pronunciation fails. If the browser blocks audio, use the manual **Word** button or switch the audio engine under Settings.
+
+On GitHub Pages, commits merged into `main` trigger `.github/workflows/deploy.yml`, which deploys the `web/` directory. This change also bumps the service worker cache version so previously installed PWAs pick up the corrected catalog and scripts on reload.

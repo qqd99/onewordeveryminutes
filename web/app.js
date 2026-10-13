@@ -28,6 +28,7 @@
         volume: 100,
         speed: 0.85,
         autoSpeak: true,
+        readSentences: true,
         wordRepeat: 2,
         audioEngine: "auto",
         selectedVoice: "",
@@ -136,6 +137,7 @@
     speedRange: $("#speedRange"),
     speedLabel: $("#speedLabel"),
     autoSpeakToggle: $("#autoSpeakToggle"),
+    readSentencesToggle: $("#readSentencesToggle"),
     wordRepeatCount: $("#wordRepeatCount"),
     wordRepeatLabel: $("#wordRepeatLabel"),
     exportDataBtn: $("#exportDataBtn"),
@@ -223,30 +225,35 @@
   ------------------------------------------------------------- */
   let activeUtterance = null;
   let activeAudioEl = null;
-  const activeUtterances = new Set(); // Prevents Chromium V8 garbage collection bug
+  let cancelActivePlayback = null;
+  let audioGeneration = 0;
+  const activeUtterances = new Set(); // Keep speech objects alive until they finish.
+
+  function isCurrentAudio(generation) {
+    return generation === audioGeneration;
+  }
 
   function recoverSpeechSynthesis() {
     if (!("speechSynthesis" in window)) return;
     try {
       window.speechSynthesis.cancel();
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
-    } catch (e) {
-      console.warn("Error recovering speech synthesis:", e);
+      if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+    } catch (err) {
+      console.warn("Could not reset speech synthesis:", err);
     }
   }
 
   function stopAudio() {
-    recoverSpeechSynthesis();
+    audioGeneration += 1;
+    if (cancelActivePlayback) cancelActivePlayback();
+    cancelActivePlayback = null;
     if (activeAudioEl) {
-      try {
-        activeAudioEl.pause();
-        activeAudioEl.currentTime = 0;
-      } catch (_) {}
+      try { activeAudioEl.pause(); } catch (_) {}
       activeAudioEl = null;
     }
+    recoverSpeechSynthesis();
     activeUtterance = null;
+    return audioGeneration;
   }
 
   function loadVoices() {
@@ -285,222 +292,203 @@
 
   function chooseVoice(lang = "zh-CN") {
     if (!state.availableVoices.length) return null;
-    if (state.store.settings.selectedVoice) {
-      const chosen = state.availableVoices.find(v => v.name === state.store.settings.selectedVoice);
-      if (chosen) return chosen;
-    }
-    const target = lang.toLowerCase();
+    const target = String(lang).toLowerCase().replace("_", "-");
     const base = target.split("-")[0];
-    return state.availableVoices.find(v => v.lang.toLowerCase() === target) ||
-      state.availableVoices.find(v => v.lang.toLowerCase().startsWith(base)) ||
-      state.availableVoices.find(v => /chinese/i.test(v.name)) ||
-      null;
+    const matching = state.availableVoices.filter(v =>
+      String(v.lang || "").toLowerCase().replace("_", "-").split("-")[0] === base
+    );
+    if (state.store.settings.selectedVoice) {
+      const selected = matching.find(v => v.name === state.store.settings.selectedVoice);
+      if (selected) return selected;
+    }
+    return matching.find(v => String(v.lang).toLowerCase().replace("_", "-") === target) ||
+      matching[0] || null;
   }
 
-  // Multi-provider online audio endpoints (HTML5 Audio pipeline - immune to speech synthesis freezes)
+  // The online providers are fallbacks, not a signal that playback succeeded.
+  // Never progress to the example unless the word's audio actually completed.
   const ONLINE_TTS_PROVIDERS = [
     (text, lang) => `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${encodeURIComponent(lang)}&q=${encodeURIComponent(text)}`,
-    (text, lang) => `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=${encodeURIComponent(lang)}&q=${encodeURIComponent(text)}`,
-    (text, lang) => `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(text)}&type=2`
+    (text, lang) => `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=${encodeURIComponent(lang)}&q=${encodeURIComponent(text)}`
   ];
 
-  function playOnlineAudio(text, { lang = "zh-CN", repeat = 1, delayMs = 400 } = {}) {
-    return new Promise((resolve) => {
-      const clean = String(text || "").trim();
-      if (!clean) { resolve(); return; }
-      const volume = (state.store.settings.volume ?? 100) / 100;
-      let count = 0;
+  function playOnlineOnce(url, generation, volume) {
+    return new Promise(resolve => {
+      if (!isCurrentAudio(generation)) { resolve(false); return; }
 
-      function playNext() {
-        if (count >= repeat) {
-          resolve();
-          return;
+      const audio = new Audio(url);
+      activeAudioEl = audio;
+      audio.volume = volume;
+      let finished = false;
+      const settle = (success) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(watchdog);
+        audio.onended = null;
+        audio.onerror = null;
+        if (!success) {
+          try { audio.pause(); } catch (_) {}
         }
-
-        let providerIndex = 0;
-        function tryProvider() {
-          if (providerIndex >= ONLINE_TTS_PROVIDERS.length) {
-            resolve();
-            return;
-          }
-
-          const url = ONLINE_TTS_PROVIDERS[providerIndex](clean, lang);
-          const audio = new Audio(url);
-          activeAudioEl = audio;
-          audio.volume = volume;
-
-          let didFinish = false;
-          const finishPlay = () => {
-            if (didFinish) return;
-            didFinish = true;
-            activeAudioEl = null;
-            count += 1;
-            if (count < repeat) {
-              setTimeout(playNext, delayMs);
-            } else {
-              resolve();
-            }
-          };
-
-          audio.onended = finishPlay;
-
-          audio.onerror = () => {
-            if (didFinish) return;
-            providerIndex += 1;
-            tryProvider();
-          };
-
-          const playPromise = audio.play();
-          if (playPromise !== undefined) {
-            playPromise.catch((err) => {
-              console.warn("Online audio provider error, trying fallback:", err?.message || err);
-              if (!didFinish) {
-                providerIndex += 1;
-                tryProvider();
-              }
-            });
-          }
-        }
-
-        tryProvider();
+        if (activeAudioEl === audio) activeAudioEl = null;
+        if (cancelActivePlayback === cancel) cancelActivePlayback = null;
+        resolve(success && isCurrentAudio(generation));
+      };
+      const cancel = () => settle(false);
+      cancelActivePlayback = cancel;
+      const watchdog = setTimeout(() => settle(false), 12000);
+      audio.onended = () => settle(true);
+      audio.onerror = () => settle(false);
+      try {
+        const playing = audio.play();
+        if (playing?.catch) playing.catch(() => settle(false));
+      } catch (_) {
+        settle(false);
       }
-
-      playNext();
     });
   }
 
-  function speakTextNative(text, { lang = "zh-CN", repeat = 1, delayMs = 400 } = {}) {
-    return new Promise((resolve) => {
-      if (!("speechSynthesis" in window) || !text) {
-        playOnlineAudio(text, { lang, repeat, delayMs }).then(resolve);
+  async function playOnlineAudio(text, { lang = "zh-CN", repeat = 1, delayMs = 400, generation } = {}) {
+    const clean = String(text || "").trim();
+    if (!clean || !isCurrentAudio(generation)) return false;
+    const volume = (state.store.settings.volume ?? 100) / 100;
+    const providers = /^zh(?:-|$)/i.test(lang)
+      ? [...ONLINE_TTS_PROVIDERS, (value) => `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(value)}&type=2`]
+      : ONLINE_TTS_PROVIDERS;
+
+    for (let count = 0; count < repeat; count += 1) {
+      if (!isCurrentAudio(generation)) return false;
+      let played = false;
+      for (const provider of providers) {
+        if (!isCurrentAudio(generation)) return false;
+        played = await playOnlineOnce(provider(clean, lang), generation, volume);
+        if (played) break;
+      }
+      if (!played) return false;
+      if (count < repeat - 1) await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+    return isCurrentAudio(generation);
+  }
+
+  function speakNativeOnce(text, { lang, generation, voice }) {
+    return new Promise(resolve => {
+      if (!isCurrentAudio(generation) || !("speechSynthesis" in window)) {
+        resolve(false);
         return;
       }
 
-      // Check if paused and unfreeze
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = lang;
+      utterance.volume = (state.store.settings.volume ?? 100) / 100;
+      utterance.rate = state.store.settings.speed ?? 0.85;
+      if (voice) utterance.voice = voice;
+      activeUtterances.add(utterance);
+      activeUtterance = utterance;
 
-      const voice = chooseVoice(lang);
-      const volume = (state.store.settings.volume ?? 100) / 100;
-      const rate = state.store.settings.speed ?? 0.85;
+      let settled = false;
+      let started = false;
+      const settle = (success) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(startWatchdog);
+        clearTimeout(finishWatchdog);
+        utterance.onstart = null;
+        utterance.onend = null;
+        utterance.onerror = null;
+        activeUtterances.delete(utterance);
+        if (activeUtterance === utterance) activeUtterance = null;
+        if (cancelActivePlayback === cancel) cancelActivePlayback = null;
+        resolve(success && isCurrentAudio(generation));
+      };
+      const cancel = () => settle(false);
+      cancelActivePlayback = cancel;
 
-      let count = 0;
-      function speakOnce() {
-        if (count >= repeat) {
-          resolve();
-          return;
+      utterance.onstart = () => { started = true; };
+      utterance.onend = () => settle(true);
+      utterance.onerror = () => settle(false);
+
+      // 1.2 seconds is too short for voices that initialize lazily.
+      const startWatchdog = setTimeout(() => {
+        if (!started) {
+          settle(false);
+          if (isCurrentAudio(generation)) recoverSpeechSynthesis();
         }
+      }, 5000);
+      const finishWatchdog = setTimeout(() => {
+        settle(false);
+        if (isCurrentAudio(generation)) recoverSpeechSynthesis();
+      }, Math.min(45000, Math.max(12000, text.length * 650)));
 
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = lang;
-        utterance.volume = volume;
-        utterance.rate = rate;
-        if (voice) utterance.voice = voice;
-
-        // Keep reference in Set to prevent Chromium V8 garbage collection
-        activeUtterances.add(utterance);
-        activeUtterance = utterance;
-
-        let started = false;
-        let finished = false;
-
-        const cleanup = () => {
-          finished = true;
-          activeUtterances.delete(utterance);
-          clearTimeout(startWatchdog);
-        };
-
-        utterance.onstart = () => {
-          started = true;
-          clearTimeout(startWatchdog);
-        };
-
-        utterance.onend = () => {
-          cleanup();
-          count += 1;
-          if (count < repeat) {
-            setTimeout(speakOnce, delayMs);
-          } else {
-            resolve();
-          }
-        };
-
-        utterance.onerror = (e) => {
-          cleanup();
-          console.warn("SpeechSynthesis error:", e?.error || e);
-          recoverSpeechSynthesis();
-          // Fall back to online audio for remaining repetitions
-          playOnlineAudio(text, { lang, repeat: repeat - count, delayMs }).then(resolve);
-        };
-
-        // Watchdog: If Chromium speech synthesis does not start speaking within 1200ms
-        const startWatchdog = setTimeout(() => {
-          if (!started && !finished) {
-            console.warn("SpeechSynthesis failed to start (Chromium freeze detected). Recovering and falling back to online audio...");
-            cleanup();
-            recoverSpeechSynthesis();
-            playOnlineAudio(text, { lang, repeat: repeat - count, delayMs }).then(resolve);
-          }
-        }, 1200);
-
-        try {
-          window.speechSynthesis.speak(utterance);
-          if (window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-          }
-        } catch (err) {
-          console.warn("SpeechSynthesis.speak threw error:", err);
-          cleanup();
-          playOnlineAudio(text, { lang, repeat: repeat - count, delayMs }).then(resolve);
-        }
+      try {
+        window.speechSynthesis.speak(utterance);
+        if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+      } catch (_) {
+        settle(false);
       }
-
-      speakOnce();
     });
   }
 
-  async function speak(text, { lang = "zh-CN", repeat = 2 } = {}) {
-    stopAudio();
-    if (!text || (state.store.settings.volume ?? 100) === 0) return;
-
-    const engine = state.store.settings.audioEngine || "auto";
-
-    try {
-      if (engine === "online") {
-        // Direct high-quality online audio (bypasses browser speech synthesis completely)
-        await playOnlineAudio(text, { lang, repeat });
-      } else if (engine === "speechSynthesis") {
-        // Native speech synthesis only
-        await speakTextNative(text, { lang, repeat });
-      } else {
-        // Auto: Try native speech with automatic watchdog fallback to online audio
-        const voice = chooseVoice(lang);
-        if (voice && "speechSynthesis" in window) {
-          await speakTextNative(text, { lang, repeat });
-        } else {
-          await playOnlineAudio(text, { lang, repeat });
-        }
-      }
-    } catch (err) {
-      console.warn("Speech playback error:", err);
+  async function speakTextNative(text, { lang = "zh-CN", repeat = 1, delayMs = 400, generation } = {}) {
+    const voice = chooseVoice(lang);
+    if (!voice && state.store.settings.audioEngine !== "speechSynthesis") return false;
+    for (let index = 0; index < repeat; index += 1) {
+      if (!isCurrentAudio(generation)) return false;
+      const success = await speakNativeOnce(text, { lang, generation, voice });
+      if (!success) return false;
+      if (index < repeat - 1) await new Promise(resolve => setTimeout(resolve, delayMs));
     }
+    return isCurrentAudio(generation);
+  }
+
+  async function speakSegment(text, { lang = "zh-CN", repeat = 2, generation } = {}) {
+    if (!text || !isCurrentAudio(generation) || (state.store.settings.volume ?? 100) === 0) return false;
+    const engine = state.store.settings.audioEngine || "auto";
+    let succeeded = false;
+    if (engine !== "online") {
+      succeeded = await speakTextNative(text, { lang, repeat, generation });
+    }
+    if (!succeeded && isCurrentAudio(generation) && engine !== "speechSynthesis") {
+      succeeded = await playOnlineAudio(text, { lang, repeat, generation });
+    }
+    return succeeded && isCurrentAudio(generation);
+  }
+
+  async function speak(text, { lang = "zh-CN", repeat = 2 } = {}) {
+    const generation = stopAudio();
+    const succeeded = await speakSegment(text, { lang, repeat, generation });
+    if (!succeeded && isCurrentAudio(generation) && (state.store.settings.volume ?? 100) > 0) {
+      console.warn("Word audio was unavailable:", text);
+    }
+    return succeeded;
   }
 
   async function playCardSequence(card) {
     if (!card) return;
-    stopAudio();
-    const wordText = card.speechText || card.front;
-    const exampleText = card.example?.speechText || card.example?.text;
+    const generation = stopAudio();
     const repeatCount = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
+    const wordPlayed = await speakSegment(card.speechText || card.front, {
+      lang: card.speechLang || "zh-CN",
+      repeat: repeatCount,
+      generation
+    });
+    if (!isCurrentAudio(generation)) return;
 
-    // Word repeated per setting
-    await speak(wordText, { lang: card.speechLang || "zh-CN", repeat: repeatCount });
+    if (!wordPlayed) {
+      if ((state.store.settings.volume ?? 100) > 0) {
+        console.warn("Could not play the word; example playback was not substituted.");
+        showToast("Word audio unavailable. Try Hear Word or change the audio engine.");
+      }
+      return;
+    }
 
-    // Example sentence repeated per setting (if available)
-    if (exampleText) {
-      await new Promise(r => setTimeout(r, 450));
-      await speak(exampleText, { lang: card.example?.speechLang || card.speechLang || "zh-CN", repeat: repeatCount });
+    const exampleText = card.example?.speechText || card.example?.text;
+    if (state.store.settings.readSentences !== false && exampleText) {
+      await new Promise(resolve => setTimeout(resolve, 450));
+      if (!isCurrentAudio(generation)) return;
+      await speakSegment(exampleText, {
+        lang: card.example?.speechLang || card.speechLang || "zh-CN",
+        repeat: repeatCount,
+        generation
+      });
     }
   }
 
@@ -654,6 +642,8 @@
   }
 
   function renderCard(card, { autoSpeak = true } = {}) {
+    // An old card must not keep speaking after the next one appears.
+    stopAudio();
     state.currentCard = card;
     state.quizAnswered = false;
     state.selectedChoiceId = null;
@@ -817,10 +807,7 @@
     saveStoredState();
     updateDashboardCounts();
 
-    // Play word audio and sentence audio
-    if (state.store.settings.autoSpeak) {
-      playCardSequence(state.currentCard);
-    }
+    // Do not restart audio on answer: the word may still be playing.
   }
 
   function presentNextCard({ autoSpeak = true } = {}) {
@@ -1602,6 +1589,11 @@
     els.autoSpeakToggle.checked = state.store.settings.autoSpeak !== false;
     els.autoSpeakToggle.addEventListener("change", (e) => {
       state.store.settings.autoSpeak = e.target.checked;
+      saveStoredState();
+    });
+    els.readSentencesToggle.checked = state.store.settings.readSentences !== false;
+    els.readSentencesToggle.addEventListener("change", (e) => {
+      state.store.settings.readSentences = e.target.checked;
       saveStoredState();
     });
 
