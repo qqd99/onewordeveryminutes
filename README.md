@@ -46,3 +46,9 @@ The word meaning is hidden until the learner chooses one of three shuffled meani
 - **Close the reminder card after choosing an answer** is enabled by default. When enabled, an answered card waits for active reading to finish, then closes after 3 seconds. When disabled, the answered card stays open until the learner closes it manually or a later interval replaces it.
 - **Speech volume** is adjustable from 0% to 100%. The value applies to word audio, sentence audio, automatic playback, manual Hear buttons, online pronunciation, and the system-speech fallback.
 - Both preferences are stored with the rest of the update-safe settings and synchronized backup.
+
+## Automatic sentence audio
+
+In Settings, **Read the word automatically** controls automatic pronunciation. The separate **Read example sentences automatically** checkbox (on by default) controls whether the example sentence follows the word. When turned off, automatic playback reads only the current word twice. **Hear sentence** on a card still plays the sentence manually, even with automatic sentence reading disabled.
+
+The word and example audio use the selected pack's speech language. If an audio request has been replaced by a newer one, old pronunciation fallbacks are stopped instead of interrupting the new card. Meanings are English definitions (rather than Chinese dictionary cross-references).
