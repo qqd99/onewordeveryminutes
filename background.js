@@ -33,6 +33,7 @@ const DEFAULT_SETTINGS = {
   closeAfterAnswer: true,
   volumePercent: 100,
   autoSpeak: true,
+  readSentences: true,
   activePackId: null
 };
 
@@ -76,6 +77,7 @@ function normalizeSettings(value) {
   settings.closeAfterAnswer = settings.closeAfterAnswer !== false;
   settings.volumePercent = Math.min(100, Math.max(0, Math.round(Number(settings.volumePercent ?? 100))));
   settings.autoSpeak = settings.autoSpeak !== false;
+  settings.readSentences = settings.readSentences !== false;
   settings.activePackId = cleanText(settings.activePackId) || null;
   return settings;
 }
@@ -1042,7 +1044,7 @@ async function ensureOffscreenDocument() {
   await creatingOffscreenDocument;
 }
 
-function buildCardSpeechSegments(card, { part = "all", repeat = 2, volume = 1 } = {}) {
+function buildCardSpeechSegments(card, { part = "all", repeat = 2, volume = 1, readSentences = true } = {}) {
   const count = Math.min(4, Math.max(1, Number(repeat) || 2));
   const segments = [];
 
@@ -1059,7 +1061,7 @@ function buildCardSpeechSegments(card, { part = "all", repeat = 2, volume = 1 } 
     });
   }
 
-  if ((part === "all" || part === "example") && card.example?.text) {
+  if ((part === "example" || (part === "all" && readSentences)) && card.example?.text) {
     segments.push({
       label: "sentence",
       text: card.example.speechText || card.example.text,
@@ -1078,13 +1080,13 @@ function buildCardSpeechSegments(card, { part = "all", repeat = 2, volume = 1 } 
   return segments;
 }
 
-async function speakCard(card, { repeat = 2, part = "all", countdownContext = null, volumePercent = 100 } = {}) {
+async function speakCard(card, { repeat = 2, part = "all", countdownContext = null, volumePercent = 100, readSentences = true } = {}) {
   if (!card) throw new Error("No word is selected.");
 
   await ensureOffscreenDocument();
   const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   const volume = Math.min(1, Math.max(0, Number(volumePercent) / 100));
-  const segments = buildCardSpeechSegments(card, { part, repeat, volume });
+  const segments = buildCardSpeechSegments(card, { part, repeat, volume, readSentences });
   const existingState = await chrome.storage.local.get("pendingSpeechCountdown");
   const inheritedCountdown = !countdownContext?.tabId &&
     existingState.pendingSpeechCountdown?.cardId === card.id
@@ -1262,7 +1264,8 @@ async function presentCard(card, vocabulary, store, { showOverlay = true, speak 
         repeat: 2,
         part: "all",
         countdownContext,
-        volumePercent: store.settings.volumePercent
+        volumePercent: store.settings.volumePercent,
+        readSentences: store.settings.readSentences
       });
     } catch (error) {
       console.warn("Automatic pronunciation failed:", error);
@@ -1744,6 +1747,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           closeAfterAnswer: message.settings?.closeAfterAnswer !== false,
           volumePercent: message.settings?.volumePercent ?? store.settings.volumePercent ?? 100,
           autoSpeak: message.settings?.autoSpeak !== false,
+          readSentences: message.settings?.readSentences ?? store.settings.readSentences,
           activePackId: message.settings?.activePackId || store.settings.activePackId
         });
         const vocabularyState = await ensureVocabulary(false, requestedSettings);
@@ -1830,7 +1834,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           repeat: Number(message.repeat) || 2,
           part: ["word", "example", "all"].includes(message.part) ? message.part : "all",
           countdownContext,
-          volumePercent: message.volumePercent ?? store.settings.volumePercent
+          volumePercent: message.volumePercent ?? store.settings.volumePercent,
+          readSentences: store.settings.readSentences
         });
         return { ok: true, speech };
       }
@@ -1863,6 +1868,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           closeAfterAnswer: message.settings?.closeAfterAnswer !== false,
           volumePercent: message.settings?.volumePercent ?? store.settings.volumePercent ?? 100,
           autoSpeak: message.settings?.autoSpeak !== false,
+          readSentences: message.settings?.readSentences ?? store.settings.readSentences,
           activePackId: message.settings?.activePackId || store.settings.activePackId
         });
         const vocabularyState = await ensureVocabulary(false, requestedSettings);
