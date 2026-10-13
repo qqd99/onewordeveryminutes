@@ -273,3 +273,71 @@ test("audio preferences survive backup restore without changing notification per
   assert.doesNotMatch(importCode, /state\.store\.settings\.notificationsEnabled = /);
   assert.doesNotMatch(importCode, /state\.store\.settings\.reminderEnabled = /);
 });
+
+test("online audio startup timeout does not truncate an already playing sentence", async () => {
+  const timers = [];
+  let active;
+  class FakeAudio {
+    constructor() { active = this; }
+    pause() {}
+    play() { return Promise.resolve(); }
+  }
+  const ctx = {
+    window: { speechSynthesis: { cancel() {}, paused: false } },
+    state: { store: { settings: { volume: 100 } }, availableVoices: [] },
+    els: { voiceSelect: null },
+    Audio: FakeAudio,
+    SpeechSynthesisUtterance: class {},
+    setTimeout: (callback, ms) => {
+      const handle = { callback, ms, cancelled: false };
+      timers.push(handle);
+      return handle;
+    },
+    clearTimeout: handle => { if (handle) handle.cancelled = true; },
+    console: { warn() {} }, URL
+  };
+  vm.runInNewContext(audioModule +
+    "\nglobalThis.audioApi = { playOnlineOnce };", ctx);
+  const playing = ctx.audioApi.playOnlineOnce("https://example.test/audio", 0, 1);
+  await Promise.resolve(); // FakeAudio.play() settled: HTML Audio started.
+  const startupTimeout = timers.find(handle => handle.ms === 3200);
+  assert.ok(startupTimeout);
+  assert.equal(startupTimeout.cancelled, true);
+  const completionTimeout = timers.find(handle => handle.ms === 45000);
+  assert.ok(completionTimeout);
+  // Simulate a sentence that outlasts the old 3200ms single watchdog.
+  if (!startupTimeout.cancelled) startupTimeout.callback();
+  active.onended();
+  assert.equal(await playing, true);
+  assert.equal(completionTimeout.cancelled, true);
+});
+
+test("online audio that never starts is cancelled quickly", async () => {
+  const timers = [];
+  let active;
+  class HungAudio {
+    constructor() { active = this; }
+    pause() { this.paused = true; }
+    play() { return new Promise(() => {}); }
+  }
+  const ctx = {
+    window: { speechSynthesis: { cancel() {}, paused: false } },
+    state: { store: { settings: { volume: 100 } }, availableVoices: [] },
+    els: { voiceSelect: null },
+    Audio: HungAudio,
+    SpeechSynthesisUtterance: class {},
+    setTimeout: (callback, ms) => {
+      const handle = { callback, ms, cancelled: false };
+      timers.push(handle);
+      return handle;
+    },
+    clearTimeout: handle => { if (handle) handle.cancelled = true; },
+    console: { warn() {} }, URL
+  };
+  vm.runInNewContext(audioModule +
+    "\nglobalThis.audioApi = { playOnlineOnce };", ctx);
+  const result = ctx.audioApi.playOnlineOnce("https://example.test/audio", 0, 1);
+  timers.find(handle => handle.ms === 3200).callback();
+  assert.equal(await result, false);
+  assert.equal(active.paused, true);
+});
