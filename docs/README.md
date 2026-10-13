@@ -60,7 +60,7 @@ Then open `http://localhost:8080` in your browser.
 - **Audio Pronunciation**:
   - Web Speech API (`SpeechSynthesis`) with auto-selection of native Chinese voices (`zh-CN`, `cmn`).
   - Online audio fallback (Google & Youdao TTS) for unsupported platforms.
-  - Configurable repeat cadence (word twice, sentence twice) and speed/volume controls.
+  - Configurable word repetition, sentence playback toggle (enabled by default), and speed/volume controls. Word playback completes before a sentence begins, and answering a quiz no longer restarts speech.
 - **Word List & Deck Browser**: Search and filter all 1,000 HSK words by status (*Due*, *Reviewed*, *New*, or *All*). Click any word to practice it immediately or listen to pronunciation.
 - **Study Modes**:
   - **Self-Paced Study**: Review at your own speed with keyboard shortcuts (`1`, `2`, `3` for answers, `Space` for audio/next, `R` for Remember, `F` for Forget, `N` for New Word).
@@ -73,3 +73,38 @@ Then open `http://localhost:8080` in your browser.
   - Works 100% offline via Service Worker cache.
   - Installable to home screen on iOS, Android, macOS, and Windows.
 - **Theme Support**: Dark mode and Light mode with persistent preferences.
+
+## Automatic sentence pronunciation
+
+Open **Settings → Audio & Pronunciation**. Turn off **Read example sentences automatically** to hear only each card’s Chinese word. The preference is saved in the browser and included in progress backups. You can still click **Sentence** or the example card's 🔊 button to hear a sentence manually.
+
+The audio player waits for the word to finish before reading the example, cancels any stale audio when a different card or manual playback takes over, and does not substitute sentence audio when word pronunciation fails. If the browser blocks audio, use the manual **Word** button or switch the audio engine under Settings.
+
+On GitHub Pages, commits merged into `main` trigger `.github/workflows/deploy.yml`, which deploys the `web/` directory. This change also bumps the service worker cache version so previously installed PWAs pick up the corrected catalog and scripts on reload.
+
+## Web audio reliability (v9)
+
+- **Auto** tries browser speech first, including when the browser initially reports no voices. Word pronunciation begins immediately whenever the browser permits playback; online audio is a fallback with shorter timeouts. Some browsers block automatic sound until you interact with the page; press **🔊 Word** in that case.
+- **Auto-read on card presentation** controls the word, while **Read example sentences automatically** only controls the optional example after the word. Turning sentences off must not mute words. Manual pronunciation buttons work independently.
+- Initial cards attempt pronunciation, and answering a quiz no longer restarts or interrupts the reading.
+- New Word now resets review history properly, SRS uses the full hours/minutes/seconds cadence, translations ignore obsolete results, and backup imports accept only known vocabulary IDs.
+- New builds refresh the installed PWA's service-worker cache and JavaScript assets.
+
+## Independent word and sentence auto-reading controls (v10)
+
+**Settings → Audio & Pronunciation** now offers two separate switches:
+
+- **Read word**: pronounce the current vocabulary word automatically.
+- **Read sentence**: pronounce the example sentence automatically.
+
+Both enabled reads the word before the sentence. Read word alone plays only the word; Read sentence alone plays only the sentence (without waiting for a muted word); both off disables automatic pronunciation. The manual **🔊 Word** and **🔊 Sentence** buttons work regardless of these settings.
+
+The new **Read word** setting preserves existing users' former **Auto-read on card presentation** value. Audio settings saved in older web backups are also migrated when imported. Settings live in browser storage; GitHub Pages publishes the updated `web/` folder after a merge to `main`.
+
+## Avoid conflicting GitHub Pages deployments
+
+This repository currently has **two complete website directories**, `web/` and `docs/`. GitHub Actions in `.github/workflows/deploy.yml` publishes `web/`, while a branch-based GitHub Pages configuration can also build `docs/`. GitHub Pages can run both on the same push; whichever deployment finishes last may determine what visitors see. The outdated `docs/` directory was why the site could show old settings even after the web deployment succeeded.
+
+**Until the repository's Pages source is consolidated, update both directories together.** The pull-request regression test `tests/pages-sync.test.cjs` rejects differing files between `web/` and `docs/`. This includes HTML, JavaScript, service-worker cache revisions, and vocabulary data.
+
+For a permanent one-source setup, open the repository's **Settings → Pages → Build and deployment → Source** and choose **GitHub Actions**, keeping `.github/workflows/deploy.yml` publishing `web/`. Once that change is confirmed, consider retiring the separate `docs/` source rather than maintaining duplicates. This settings change cannot be made merely by editing web source files.

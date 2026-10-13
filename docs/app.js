@@ -17,6 +17,7 @@
     currentQuiz: null,
     quizAnswered: false,
     selectedChoiceId: null,
+    currentReviewBaseline: null,
     store: {
       settings: {
         theme: "light",
@@ -27,7 +28,8 @@
         reminderEnabled: false,
         volume: 100,
         speed: 0.85,
-        autoSpeak: true,
+        readWords: true,
+        readSentences: true,
         wordRepeat: 2,
         audioEngine: "auto",
         selectedVoice: "",
@@ -135,7 +137,8 @@
     volumeLabel: $("#volumeLabel"),
     speedRange: $("#speedRange"),
     speedLabel: $("#speedLabel"),
-    autoSpeakToggle: $("#autoSpeakToggle"),
+    readWordToggle: $("#readWordToggle"),
+    readSentenceToggle: $("#readSentenceToggle"),
     wordRepeatCount: $("#wordRepeatCount"),
     wordRepeatLabel: $("#wordRepeatLabel"),
     exportDataBtn: $("#exportDataBtn"),
@@ -164,6 +167,12 @@
           lastCardId: parsed.lastCardId || null,
           currentCardId: parsed.currentCardId || null
         };
+        // Migrate the old word preference without changing sentence playback.
+        if (typeof parsed.settings?.readWords !== "boolean" &&
+            typeof parsed.settings?.autoSpeak === "boolean") {
+          state.store.settings.readWords = parsed.settings.autoSpeak;
+        }
+        delete state.store.settings.autoSpeak;
         if (state.store.settings.intervalHours === undefined) state.store.settings.intervalHours = 0;
         if (state.store.settings.intervalSeconds === undefined) state.store.settings.intervalSeconds = 0;
       }
@@ -223,30 +232,35 @@
   ------------------------------------------------------------- */
   let activeUtterance = null;
   let activeAudioEl = null;
-  const activeUtterances = new Set(); // Prevents Chromium V8 garbage collection bug
+  let cancelActivePlayback = null;
+  let audioGeneration = 0;
+  const activeUtterances = new Set(); // Keep speech objects alive until they finish.
+
+  function isCurrentAudio(generation) {
+    return generation === audioGeneration;
+  }
 
   function recoverSpeechSynthesis() {
     if (!("speechSynthesis" in window)) return;
     try {
       window.speechSynthesis.cancel();
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
-    } catch (e) {
-      console.warn("Error recovering speech synthesis:", e);
+      if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+    } catch (err) {
+      console.warn("Could not reset speech synthesis:", err);
     }
   }
 
   function stopAudio() {
-    recoverSpeechSynthesis();
+    audioGeneration += 1;
+    if (cancelActivePlayback) cancelActivePlayback();
+    cancelActivePlayback = null;
     if (activeAudioEl) {
-      try {
-        activeAudioEl.pause();
-        activeAudioEl.currentTime = 0;
-      } catch (_) {}
+      try { activeAudioEl.pause(); } catch (_) {}
       activeAudioEl = null;
     }
+    recoverSpeechSynthesis();
     activeUtterance = null;
+    return audioGeneration;
   }
 
   function loadVoices() {
@@ -284,223 +298,241 @@
   }
 
   function chooseVoice(lang = "zh-CN") {
-    if (!state.availableVoices.length) return null;
-    if (state.store.settings.selectedVoice) {
-      const chosen = state.availableVoices.find(v => v.name === state.store.settings.selectedVoice);
-      if (chosen) return chosen;
+    // Chromium often populates voices after initial page load. A missing
+    // explicitly named voice is not a reason to skip native TTS entirely.
+    if (!state.availableVoices.length && "speechSynthesis" in window) {
+      try { state.availableVoices = window.speechSynthesis.getVoices() || []; } catch (_) {}
     }
-    const target = lang.toLowerCase();
+    if (!state.availableVoices.length) return null;
+    const target = String(lang).toLowerCase().replace("_", "-");
     const base = target.split("-")[0];
-    return state.availableVoices.find(v => v.lang.toLowerCase() === target) ||
-      state.availableVoices.find(v => v.lang.toLowerCase().startsWith(base)) ||
-      state.availableVoices.find(v => /chinese/i.test(v.name)) ||
-      null;
+    const matching = state.availableVoices.filter(v =>
+      String(v.lang || "").toLowerCase().replace("_", "-").split("-")[0] === base
+    );
+    if (state.store.settings.selectedVoice) {
+      const selected = matching.find(v => v.name === state.store.settings.selectedVoice);
+      if (selected) return selected;
+    }
+    return matching.find(v => String(v.lang).toLowerCase().replace("_", "-") === target) ||
+      matching[0] || null;
   }
 
-  // Multi-provider online audio endpoints (HTML5 Audio pipeline - immune to speech synthesis freezes)
+  // The online providers are fallbacks, not a signal that playback succeeded.
+  // Never progress to the example unless the word's audio actually completed.
   const ONLINE_TTS_PROVIDERS = [
     (text, lang) => `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${encodeURIComponent(lang)}&q=${encodeURIComponent(text)}`,
-    (text, lang) => `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=${encodeURIComponent(lang)}&q=${encodeURIComponent(text)}`,
-    (text, lang) => `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(text)}&type=2`
+    (text, lang) => `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=${encodeURIComponent(lang)}&q=${encodeURIComponent(text)}`
   ];
 
-  function playOnlineAudio(text, { lang = "zh-CN", repeat = 1, delayMs = 400 } = {}) {
-    return new Promise((resolve) => {
-      const clean = String(text || "").trim();
-      if (!clean) { resolve(); return; }
-      const volume = (state.store.settings.volume ?? 100) / 100;
-      let count = 0;
+  function playOnlineOnce(url, generation, volume) {
+    return new Promise(resolve => {
+      if (!isCurrentAudio(generation)) { resolve(false); return; }
 
-      function playNext() {
-        if (count >= repeat) {
-          resolve();
-          return;
+      const audio = new Audio(url);
+      activeAudioEl = audio;
+      audio.volume = volume;
+      let finished = false;
+      let playbackWatchdog = null;
+      const settle = (success) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(startWatchdog);
+        clearTimeout(playbackWatchdog);
+        audio.onplaying = null;
+        audio.onended = null;
+        audio.onerror = null;
+        if (!success) {
+          try { audio.pause(); } catch (_) {}
         }
-
-        let providerIndex = 0;
-        function tryProvider() {
-          if (providerIndex >= ONLINE_TTS_PROVIDERS.length) {
-            resolve();
-            return;
-          }
-
-          const url = ONLINE_TTS_PROVIDERS[providerIndex](clean, lang);
-          const audio = new Audio(url);
-          activeAudioEl = audio;
-          audio.volume = volume;
-
-          let didFinish = false;
-          const finishPlay = () => {
-            if (didFinish) return;
-            didFinish = true;
-            activeAudioEl = null;
-            count += 1;
-            if (count < repeat) {
-              setTimeout(playNext, delayMs);
-            } else {
-              resolve();
-            }
-          };
-
-          audio.onended = finishPlay;
-
-          audio.onerror = () => {
-            if (didFinish) return;
-            providerIndex += 1;
-            tryProvider();
-          };
-
-          const playPromise = audio.play();
-          if (playPromise !== undefined) {
-            playPromise.catch((err) => {
-              console.warn("Online audio provider error, trying fallback:", err?.message || err);
-              if (!didFinish) {
-                providerIndex += 1;
-                tryProvider();
-              }
-            });
-          }
-        }
-
-        tryProvider();
+        if (activeAudioEl === audio) activeAudioEl = null;
+        if (cancelActivePlayback === cancel) cancelActivePlayback = null;
+        resolve(success && isCurrentAudio(generation));
+      };
+      const cancel = () => settle(false);
+      cancelActivePlayback = cancel;
+      const started = () => {
+        if (finished || playbackWatchdog !== null) return;
+        clearTimeout(startWatchdog);
+        // A correctly playing sentence can last much longer than 3 seconds.
+        playbackWatchdog = setTimeout(() => settle(false), 45000);
+      };
+      // Skip blocked or hung providers quickly, but never cut off healthy audio.
+      const startWatchdog = setTimeout(() => settle(false), 3200);
+      audio.onplaying = started;
+      audio.onended = () => settle(true);
+      audio.onerror = () => settle(false);
+      try {
+        const playing = audio.play();
+        if (playing?.then) playing.then(started, () => settle(false));
+      } catch (_) {
+        settle(false);
       }
-
-      playNext();
     });
   }
 
-  function speakTextNative(text, { lang = "zh-CN", repeat = 1, delayMs = 400 } = {}) {
-    return new Promise((resolve) => {
-      if (!("speechSynthesis" in window) || !text) {
-        playOnlineAudio(text, { lang, repeat, delayMs }).then(resolve);
+  async function playOnlineAudio(text, { lang = "zh-CN", repeat = 1, delayMs = 400, generation } = {}) {
+    const clean = String(text || "").trim();
+    if (!clean || !isCurrentAudio(generation)) return false;
+    const volume = (state.store.settings.volume ?? 100) / 100;
+    const providers = /^zh(?:-|$)/i.test(lang)
+      ? [...ONLINE_TTS_PROVIDERS, (value) => `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(value)}&type=2`]
+      : ONLINE_TTS_PROVIDERS;
+
+    for (let count = 0; count < repeat; count += 1) {
+      if (!isCurrentAudio(generation)) return false;
+      let played = false;
+      for (const provider of providers) {
+        if (!isCurrentAudio(generation)) return false;
+        played = await playOnlineOnce(provider(clean, lang), generation, volume);
+        if (played) break;
+      }
+      if (!played) return false;
+      if (count < repeat - 1) await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+    return isCurrentAudio(generation);
+  }
+
+  function speakNativeOnce(text, { lang, generation, voice }) {
+    return new Promise(resolve => {
+      if (!isCurrentAudio(generation) || !("speechSynthesis" in window) ||
+          typeof SpeechSynthesisUtterance !== "function") {
+        resolve(false);
         return;
       }
 
-      // Check if paused and unfreeze
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = lang;
+      utterance.volume = (state.store.settings.volume ?? 100) / 100;
+      utterance.rate = state.store.settings.speed ?? 0.85;
+      if (voice) utterance.voice = voice;
+      activeUtterances.add(utterance);
+      activeUtterance = utterance;
 
-      const voice = chooseVoice(lang);
-      const volume = (state.store.settings.volume ?? 100) / 100;
-      const rate = state.store.settings.speed ?? 0.85;
+      let settled = false;
+      let started = false;
+      const settle = (success) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(startWatchdog);
+        clearTimeout(finishWatchdog);
+        utterance.onstart = null;
+        utterance.onend = null;
+        utterance.onerror = null;
+        activeUtterances.delete(utterance);
+        if (activeUtterance === utterance) activeUtterance = null;
+        if (cancelActivePlayback === cancel) cancelActivePlayback = null;
+        resolve(success && isCurrentAudio(generation));
+      };
+      const cancel = () => settle(false);
+      cancelActivePlayback = cancel;
 
-      let count = 0;
-      function speakOnce() {
-        if (count >= repeat) {
-          resolve();
-          return;
+      utterance.onstart = () => { started = true; };
+      utterance.onend = () => settle(true);
+      utterance.onerror = () => settle(false);
+
+      // Attempt native playback immediately. Recover promptly if the browser
+      // never starts, rather than waiting five seconds before trying online.
+      const startWatchdog = setTimeout(() => {
+        if (!started) {
+          settle(false);
+          if (isCurrentAudio(generation)) recoverSpeechSynthesis();
         }
+      }, 2000);
+      const finishWatchdog = setTimeout(() => {
+        settle(false);
+        if (isCurrentAudio(generation)) recoverSpeechSynthesis();
+      }, Math.min(45000, Math.max(12000, text.length * 650)));
 
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = lang;
-        utterance.volume = volume;
-        utterance.rate = rate;
-        if (voice) utterance.voice = voice;
-
-        // Keep reference in Set to prevent Chromium V8 garbage collection
-        activeUtterances.add(utterance);
-        activeUtterance = utterance;
-
-        let started = false;
-        let finished = false;
-
-        const cleanup = () => {
-          finished = true;
-          activeUtterances.delete(utterance);
-          clearTimeout(startWatchdog);
-        };
-
-        utterance.onstart = () => {
-          started = true;
-          clearTimeout(startWatchdog);
-        };
-
-        utterance.onend = () => {
-          cleanup();
-          count += 1;
-          if (count < repeat) {
-            setTimeout(speakOnce, delayMs);
-          } else {
-            resolve();
-          }
-        };
-
-        utterance.onerror = (e) => {
-          cleanup();
-          console.warn("SpeechSynthesis error:", e?.error || e);
-          recoverSpeechSynthesis();
-          // Fall back to online audio for remaining repetitions
-          playOnlineAudio(text, { lang, repeat: repeat - count, delayMs }).then(resolve);
-        };
-
-        // Watchdog: If Chromium speech synthesis does not start speaking within 1200ms
-        const startWatchdog = setTimeout(() => {
-          if (!started && !finished) {
-            console.warn("SpeechSynthesis failed to start (Chromium freeze detected). Recovering and falling back to online audio...");
-            cleanup();
-            recoverSpeechSynthesis();
-            playOnlineAudio(text, { lang, repeat: repeat - count, delayMs }).then(resolve);
-          }
-        }, 1200);
-
-        try {
-          window.speechSynthesis.speak(utterance);
-          if (window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-          }
-        } catch (err) {
-          console.warn("SpeechSynthesis.speak threw error:", err);
-          cleanup();
-          playOnlineAudio(text, { lang, repeat: repeat - count, delayMs }).then(resolve);
-        }
+      try {
+        window.speechSynthesis.speak(utterance);
+        if (window.speechSynthesis.paused) window.speechSynthesis.resume();
+      } catch (_) {
+        settle(false);
       }
-
-      speakOnce();
     });
   }
 
-  async function speak(text, { lang = "zh-CN", repeat = 2 } = {}) {
-    stopAudio();
-    if (!text || (state.store.settings.volume ?? 100) === 0) return;
-
-    const engine = state.store.settings.audioEngine || "auto";
-
-    try {
-      if (engine === "online") {
-        // Direct high-quality online audio (bypasses browser speech synthesis completely)
-        await playOnlineAudio(text, { lang, repeat });
-      } else if (engine === "speechSynthesis") {
-        // Native speech synthesis only
-        await speakTextNative(text, { lang, repeat });
-      } else {
-        // Auto: Try native speech with automatic watchdog fallback to online audio
-        const voice = chooseVoice(lang);
-        if (voice && "speechSynthesis" in window) {
-          await speakTextNative(text, { lang, repeat });
-        } else {
-          await playOnlineAudio(text, { lang, repeat });
-        }
-      }
-    } catch (err) {
-      console.warn("Speech playback error:", err);
+  async function speakTextNative(text, { lang = "zh-CN", repeat = 1, delayMs = 400, generation } = {}) {
+    const voice = chooseVoice(lang);
+    // Even if getVoices() is empty, the browser may provide a working
+    // default Chinese voice when utterance.lang is set to zh-CN.
+    if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance !== "function") return false;
+    for (let index = 0; index < repeat; index += 1) {
+      if (!isCurrentAudio(generation)) return false;
+      const success = await speakNativeOnce(text, { lang, generation, voice });
+      if (!success) return false;
+      if (index < repeat - 1) await new Promise(resolve => setTimeout(resolve, delayMs));
     }
+    return isCurrentAudio(generation);
+  }
+
+  async function speakSegment(text, { lang = "zh-CN", repeat = 2, generation } = {}) {
+    if (!text || !isCurrentAudio(generation) || (state.store.settings.volume ?? 100) === 0) return false;
+    const engine = state.store.settings.audioEngine || "auto";
+    const count = Math.min(5, Math.max(1, Math.round(Number(repeat) || 2)));
+
+    // Play one repetition at a time. If a native voice fails on the second
+    // reading, online fallback only replaces that reading, not the whole word.
+    for (let index = 0; index < count; index += 1) {
+      if (!isCurrentAudio(generation)) return false;
+      let succeeded = false;
+      if (engine !== "online") {
+        succeeded = await speakTextNative(text, { lang, repeat: 1, generation });
+      }
+      if (!succeeded && isCurrentAudio(generation) && engine !== "speechSynthesis") {
+        succeeded = await playOnlineAudio(text, { lang, repeat: 1, generation });
+      }
+      if (!succeeded) return false;
+      if (index + 1 < count) await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    return isCurrentAudio(generation);
+  }
+
+  async function speak(text, { lang = "zh-CN", repeat = 2 } = {}) {
+    const generation = stopAudio();
+    const succeeded = await speakSegment(text, { lang, repeat, generation });
+    if (!succeeded && isCurrentAudio(generation) && (state.store.settings.volume ?? 100) > 0) {
+      console.warn("Word audio was unavailable:", text);
+      showToast("Audio could not start. Tap 🔊 Word to retry, or choose another Audio Engine in Settings.");
+    }
+    return succeeded;
   }
 
   async function playCardSequence(card) {
     if (!card) return;
-    stopAudio();
-    const wordText = card.speechText || card.front;
-    const exampleText = card.example?.speechText || card.example?.text;
+    const readWord = state.store.settings.readWords !== false;
+    const readSentence = state.store.settings.readSentences !== false;
+    const generation = stopAudio();
+    if (!readWord && !readSentence) return;
+
     const repeatCount = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
+    if (readWord) {
+      const wordPlayed = await speakSegment(card.speechText || card.front, {
+        lang: card.speechLang || "zh-CN",
+        repeat: repeatCount,
+        generation
+      });
+      if (!isCurrentAudio(generation)) return;
+      if (!wordPlayed) {
+        // Do not silently replace a failed requested word with its sentence.
+        if ((state.store.settings.volume ?? 100) > 0) {
+          console.warn("Could not play the word; example playback was not substituted.");
+          showToast("Word audio unavailable. Try Hear Word or change the audio engine.");
+        }
+        return;
+      }
+    }
 
-    // Word repeated per setting
-    await speak(wordText, { lang: card.speechLang || "zh-CN", repeat: repeatCount });
-
-    // Example sentence repeated per setting (if available)
-    if (exampleText) {
-      await new Promise(r => setTimeout(r, 450));
-      await speak(exampleText, { lang: card.example?.speechLang || card.speechLang || "zh-CN", repeat: repeatCount });
+    const exampleText = card.example?.speechText || card.example?.text;
+    if (readSentence && exampleText) {
+      // Sentence-only mode starts immediately without a word or pause.
+      if (readWord) await new Promise(resolve => setTimeout(resolve, 450));
+      if (!isCurrentAudio(generation)) return;
+      await speakSegment(exampleText, {
+        lang: card.example?.speechLang || card.speechLang || "zh-CN",
+        repeat: repeatCount,
+        generation
+      });
     }
   }
 
@@ -585,8 +617,12 @@
     const uniqueDistractors = new Set();
 
     const candidates = vocabulary.filter(w => w.id !== card.id && w.meaning && w.meaning !== correctMeaning);
-    // Shuffle candidates
-    const shuffled = [...candidates].sort(() => 0.5 - Math.random());
+    // Fisher-Yates avoids the biased comparator used in Array.sort.
+    const shuffled = [...candidates];
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
 
     for (const item of shuffled) {
       const text = String(item.meaning || "").trim();
@@ -603,7 +639,11 @@
         text,
         isCorrect: false
       }))
-    ].sort(() => 0.5 - Math.random());
+    ];
+    for (let i = choices.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [choices[i], choices[j]] = [choices[j], choices[i]];
+    }
 
     return { choices, correctMeaning };
   }
@@ -653,10 +693,14 @@
     return result;
   }
 
-  function renderCard(card, { autoSpeak = true } = {}) {
+  function renderCard(card, { autoPlay = true } = {}) {
+    // Avoid double-cancelling speech right before a new reading starts.
+    // playCardSequence() handles cancellation for spoken cards.
+    if (!autoPlay || (state.store.settings.readWords === false && state.store.settings.readSentences === false)) stopAudio();
     state.currentCard = card;
     state.quizAnswered = false;
     state.selectedChoiceId = null;
+    state.currentReviewBaseline = null;
     state.store.currentCardId = card.id;
     saveStoredState();
 
@@ -761,16 +805,30 @@
     // Mark shown in SRS
     state.store.progress[card.id] = markShown(
       state.store.progress[card.id],
-      state.store.settings.intervalMinutes
+      getSrsDisplayMinutes()
     );
     saveStoredState();
 
-    updateDashboardCounts();
-
-    // Auto audio
-    if (autoSpeak && state.store.settings.autoSpeak) {
+    // Either switch can independently trigger automatic pronunciation.
+    if (autoPlay && (state.store.settings.readWords !== false ||
+                     state.store.settings.readSentences !== false)) {
       playCardSequence(card);
     }
+    updateDashboardCounts();
+  }
+
+  function rateCurrentCard(rating) {
+    if (!state.currentCard) return;
+    const id = state.currentCard.id;
+    if (!state.currentReviewBaseline) {
+      state.currentReviewBaseline = normalizeProgress(state.store.progress[id]);
+    }
+    const baseline = state.currentReviewBaseline;
+    state.store.progress[id] = rating === "remember"
+      ? reviewRemember(baseline, getSrsDisplayMinutes())
+      : reviewForget(baseline, getSrsDisplayMinutes());
+    saveStoredState();
+    updateDashboardCounts();
   }
 
   function handleQuizAnswer(choice, clickedBtn) {
@@ -795,35 +853,17 @@
     els.revealedMeaning.textContent = `Meaning: ${state.currentQuiz.correctMeaning}`;
     els.revealedMeaning.hidden = false;
 
-    // Apply SRS algorithm
-    const now = Date.now();
-    const intervalMins = state.store.settings.intervalMinutes;
-    if (choice.isCorrect) {
-      state.store.progress[state.currentCard.id] = reviewRemember(
-        state.store.progress[state.currentCard.id],
-        intervalMins,
-        now
-      );
-      showToast("Correct! SRS interval increased.");
-    } else {
-      state.store.progress[state.currentCard.id] = reviewForget(
-        state.store.progress[state.currentCard.id],
-        intervalMins,
-        now
-      );
-      showToast("Incorrect. Word scheduled for review.");
-    }
+    // Apply one rating per presentation. Manual Remember/Forget buttons can
+    // correct it without counting an additional review of the same card.
+    rateCurrentCard(choice.isCorrect ? "remember" : "forget");
+    showToast(choice.isCorrect
+      ? "Correct! SRS interval increased."
+      : "Incorrect. Word scheduled for review.");
 
-    saveStoredState();
-    updateDashboardCounts();
-
-    // Play word audio and sentence audio
-    if (state.store.settings.autoSpeak) {
-      playCardSequence(state.currentCard);
-    }
+    // Do not restart audio on answer: the word may still be playing.
   }
 
-  function presentNextCard({ autoSpeak = true } = {}) {
+  function presentNextCard({ autoPlay = true } = {}) {
     if (!state.activePack) return;
     state.store.lastCardId = state.currentCard ? state.currentCard.id : null;
     const nextCard = chooseNextCard(
@@ -831,9 +871,9 @@
       state.store.progress,
       state.store.lastCardId,
       Date.now(),
-      state.store.settings.intervalMinutes
+      getSrsDisplayMinutes()
     );
-    renderCard(nextCard, { autoSpeak });
+    renderCard(nextCard, { autoPlay });
   }
 
   /* -------------------------------------------------------------
@@ -872,41 +912,33 @@
 
     els.newWordBtn.addEventListener("click", () => {
       if (!state.currentCard) return;
-      const progress = normalizeProgress(state.store.progress[state.currentCard.id]);
-      progress.lastReviewedAt = 0;
-      progress.repetitions = 0;
-      progress.intervalMinutes = 0;
-      state.store.progress[state.currentCard.id] = progress;
+      // Fully reset this card's review history: leaving remembered/forgotten
+      // counters behind makes wasEverReviewed() classify it as reviewed.
+      state.store.progress[state.currentCard.id] = {
+        ...defaultCardProgress(),
+        lastShownAt: Date.now()
+      };
+      state.currentReviewBaseline = null;
       saveStoredState();
       updateDashboardCounts();
       showToast("Card status set to New Word");
-      presentNextCard({ autoSpeak: true });
+      presentNextCard({ autoPlay: true });
     });
 
     els.forgetBtn.addEventListener("click", () => {
       if (!state.currentCard) return;
-      state.store.progress[state.currentCard.id] = reviewForget(
-        state.store.progress[state.currentCard.id],
-        state.store.settings.intervalMinutes
-      );
-      saveStoredState();
-      updateDashboardCounts();
+      rateCurrentCard("forget");
       showToast("Marked as Forget (interval reset)");
     });
 
     els.rememberBtn.addEventListener("click", () => {
       if (!state.currentCard) return;
-      state.store.progress[state.currentCard.id] = reviewRemember(
-        state.store.progress[state.currentCard.id],
-        state.store.settings.intervalMinutes
-      );
-      saveStoredState();
-      updateDashboardCounts();
+      rateCurrentCard("remember");
       showToast("Marked as Remember (interval increased)");
     });
 
     els.nextCardBtn.addEventListener("click", () => {
-      presentNextCard({ autoSpeak: true });
+      presentNextCard({ autoPlay: true });
     });
   }
 
@@ -1077,7 +1109,7 @@
       row.style.cursor = "pointer";
       row.addEventListener("click", () => {
         switchTab("study");
-        renderCard(card, { autoSpeak: false });
+        renderCard(card, { autoPlay: false });
       });
 
       els.deckWordList.appendChild(row);
@@ -1114,6 +1146,12 @@
      9. REMINDER CADENCE TIMER & NOTIFICATIONS
   ------------------------------------------------------------- */
 
+  function getSrsDisplayMinutes() {
+    // The timer supports hours/minutes/seconds, but the SRS engine works
+    // in whole minutes. Use the entire cadence, not only the minute field.
+    return Math.max(1, Math.ceil(getTotalIntervalSeconds() / 60));
+  }
+
   function getTotalIntervalSeconds() {
     const s = state.store.settings;
     const hours = Math.max(0, parseInt(s.intervalHours, 10) || 0);
@@ -1142,6 +1180,7 @@
     }
 
     if (!state.store.settings.reminderEnabled) {
+      state.nextReminderTime = null;
       els.intervalTimerPill.classList.remove("active");
       els.timerStatusText.textContent = "Self-paced study";
       return;
@@ -1161,7 +1200,7 @@
 
   function triggerReminder() {
     if (!state.activePack) return;
-    presentNextCard({ autoSpeak: state.store.settings.autoSpeak });
+    presentNextCard({ autoPlay: true });
 
     // Play subtle audio cue / notification
     if (state.store.settings.notificationsEnabled && "Notification" in window && Notification.permission === "granted") {
@@ -1184,6 +1223,7 @@
   ------------------------------------------------------------- */
   const translationCache = new Map();
   let translateDebounceTimer = null;
+  let translationGeneration = 0;
 
   async function fetchGoogleTranslate(text) {
     const trimmed = text.trim();
@@ -1193,7 +1233,14 @@
     }
 
     const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=en&dt=t&dt=rm&dt=bd&q=${encodeURIComponent(trimmed)}`;
-    const response = await fetch(url);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+    let response;
+    try {
+      response = await fetch(url, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
     if (!response.ok) throw new Error(`HTTP error ${response.status}`);
     const data = await response.json();
 
@@ -1238,6 +1285,7 @@
   }
 
   async function executeTranslation() {
+    const requestId = ++translationGeneration;
     const text = els.translateInput.value.trim();
     if (!text) {
       els.translateResult.hidden = true;
@@ -1311,6 +1359,8 @@
         })
       );
 
+      // The input may have changed while multiple translations were loading.
+      if (requestId !== translationGeneration) return;
       els.resultChinese.textContent = text;
       els.resultPinyin.textContent = fullTrans.pinyin || "";
       els.resultPinyin.hidden = !fullTrans.pinyin;
@@ -1383,10 +1433,12 @@
         }
       }, 2000);
     } catch (err) {
-      console.error("Translation execution error:", err);
-      els.translateStatusIndicator.textContent = "Error translating text";
+      if (requestId === translationGeneration) {
+        console.error("Translation execution error:", err);
+        els.translateStatusIndicator.textContent = "Error translating text";
+      }
     } finally {
-      els.translateBtn.disabled = false;
+      if (requestId === translationGeneration) els.translateBtn.disabled = false;
     }
   }
 
@@ -1398,6 +1450,8 @@
     }
 
     els.translateInput.addEventListener("input", () => {
+      ++translationGeneration;
+      els.translateBtn.disabled = false;
       updateCharCount();
       if (translateDebounceTimer) clearTimeout(translateDebounceTimer);
       const text = els.translateInput.value.trim();
@@ -1417,6 +1471,9 @@
     });
 
     els.clearTranslateBtn.addEventListener("click", () => {
+      ++translationGeneration;
+      if (translateDebounceTimer) clearTimeout(translateDebounceTimer);
+      els.translateBtn.disabled = false;
       els.translateInput.value = "";
       updateCharCount();
       els.translateResult.hidden = true;
@@ -1599,9 +1656,14 @@
       });
     }
 
-    els.autoSpeakToggle.checked = state.store.settings.autoSpeak !== false;
-    els.autoSpeakToggle.addEventListener("change", (e) => {
-      state.store.settings.autoSpeak = e.target.checked;
+    els.readWordToggle.checked = state.store.settings.readWords !== false;
+    els.readWordToggle.addEventListener("change", (e) => {
+      state.store.settings.readWords = e.target.checked;
+      saveStoredState();
+    });
+    els.readSentenceToggle.checked = state.store.settings.readSentences !== false;
+    els.readSentenceToggle.addEventListener("change", (e) => {
+      state.store.settings.readSentences = e.target.checked;
       saveStoredState();
     });
 
@@ -1656,23 +1718,73 @@
         const text = await file.text();
         const imported = JSON.parse(text);
 
-        // Merge progress: handles both direct backup format and Edge extension storage dump
-        const importedProgress = imported.progress || imported.chineseSrsBackupProgress || imported;
-        if (typeof importedProgress === "object" && importedProgress !== null) {
-          let count = 0;
-          for (const [id, val] of Object.entries(importedProgress)) {
-            if (val && typeof val === "object") {
-              state.store.progress[id] = normalizeProgress(val);
-              count += 1;
-            }
-          }
-          saveStoredState();
-          updateDashboardCounts();
-          renderDeckList();
-          showToast(`Successfully imported progress for ${count} cards!`);
-        } else {
+        // Accept web backups and the extension's progress payload. Never
+        // interpret a whole settings/metadata object as card progress.
+        const importedProgress = imported?.progress ??
+          imported?.payload?.progress ?? imported?.chineseSrsBackupProgress ??
+          (imported?.settings || imported?.schemaVersion ? null : imported);
+        if (!importedProgress || typeof importedProgress !== "object" ||
+            Array.isArray(importedProgress)) {
           throw new Error("Invalid progress backup format.");
         }
+
+        const validIds = new Set((state.catalog?.packs || []).flatMap(pack =>
+          pack.cards.map(card => card.id)
+        ));
+        let count = 0;
+        for (const [id, val] of Object.entries(importedProgress)) {
+          if (!validIds.has(id) || !val || typeof val !== "object" ||
+              Array.isArray(val)) continue;
+          state.store.progress[id] = normalizeProgress(val);
+          count += 1;
+        }
+        if (!count) throw new Error("No matching vocabulary progress found in backup.");
+        state.currentReviewBaseline = null;
+
+        // Backups also contain the user's audio preferences. Restore only
+        // validated known fields, keeping reminder/notification permissions
+        // local to this browser.
+        const importedSettings = imported.settings || imported.payload?.settings;
+        if (importedSettings && typeof importedSettings === "object" &&
+            !Array.isArray(importedSettings)) {
+          // Support both new and old backups; the switches remain independent.
+          const importedReadWords = typeof importedSettings.readWords === "boolean"
+            ? importedSettings.readWords : importedSettings.autoSpeak;
+          if (typeof importedReadWords === "boolean") {
+            state.store.settings.readWords = importedReadWords;
+          }
+          if (typeof importedSettings.readSentences === "boolean") {
+            state.store.settings.readSentences = importedSettings.readSentences;
+          }
+          if (["auto", "online", "speechSynthesis"].includes(importedSettings.audioEngine)) {
+            state.store.settings.audioEngine = importedSettings.audioEngine;
+          }
+          const volume = Number(importedSettings.volume);
+          if (importedSettings.volume != null && Number.isFinite(volume)) {
+            state.store.settings.volume = Math.min(100, Math.max(0, volume));
+          }
+          const speed = Number(importedSettings.speed);
+          if (importedSettings.speed != null && Number.isFinite(speed)) {
+            state.store.settings.speed = Math.min(1.5, Math.max(0.5, speed));
+          }
+          const repeats = Number(importedSettings.wordRepeat);
+          if (Number.isFinite(repeats) && repeats >= 1) {
+            state.store.settings.wordRepeat = Math.min(5, Math.round(repeats));
+          }
+          els.readWordToggle.checked = state.store.settings.readWords !== false;
+          els.readSentenceToggle.checked = state.store.settings.readSentences !== false;
+          els.audioEngineSelect.value = state.store.settings.audioEngine || "auto";
+          els.volumeRange.value = state.store.settings.volume;
+          els.volumeLabel.textContent = `${state.store.settings.volume}%`;
+          els.speedRange.value = state.store.settings.speed;
+          els.speedLabel.textContent = `${state.store.settings.speed}x`;
+          els.wordRepeatCount.value = state.store.settings.wordRepeat;
+          els.wordRepeatLabel.textContent = state.store.settings.wordRepeat;
+        }
+        saveStoredState();
+        updateDashboardCounts();
+        renderDeckList();
+        showToast(`Successfully imported progress for ${count} cards!`);
       } catch (err) {
         alert(`Failed to import file: ${err.message}`);
       } finally {
@@ -1723,7 +1835,7 @@
       saveStoredState();
       updateDashboardCounts();
       renderDeckList();
-      presentNextCard({ autoSpeak: false });
+      presentNextCard({ autoPlay: false });
       closeResetModal();
       showToast("Progress has been reset.");
     });
@@ -1760,7 +1872,11 @@
   function setupKeyboardShortcuts() {
     window.addEventListener("keydown", (e) => {
       // Don't trigger shortcuts if user is typing in an input
-      if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing ||
+          ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName) ||
+          document.activeElement?.isContentEditable ||
+          ![...els.tabButtons].some(btn => btn.dataset.tab === "study" && btn.classList.contains("active")) ||
+          els.resetModal.classList.contains("active")) {
         return;
       }
 
@@ -1786,7 +1902,7 @@
           }
         } else {
           // Advance to next card
-          presentNextCard({ autoSpeak: true });
+          presentNextCard({ autoPlay: true });
         }
       } else if (key === "r" || key === "R") {
         els.rememberBtn.click();
@@ -1809,6 +1925,9 @@
   ------------------------------------------------------------- */
   async function init() {
     loadStoredState();
+    // The first loadVoices() call ran before stored preferences were read.
+    // Populate the selected device voice after restoring those preferences.
+    loadVoices();
     initTheme();
     setupActionButtons();
     setupDeckBrowser();
@@ -1844,7 +1963,7 @@
           saveStoredState();
           updateDashboardCounts();
           renderDeckList();
-          presentNextCard({ autoSpeak: false });
+          presentNextCard({ autoPlay: false });
         }
       });
 
@@ -1859,11 +1978,13 @@
           state.store.progress,
           null,
           Date.now(),
-          state.store.settings.intervalMinutes
+          getSrsDisplayMinutes()
         );
       }
 
-      renderCard(initialCard, { autoSpeak: false });
+      // A loaded card is a presentation too. Some browsers require an
+      // interaction before allowing audio; manual Hear Word remains available.
+      renderCard(initialCard, { autoPlay: true });
       updateDashboardCounts();
       renderDeckList();
       scheduleNextReminder();
