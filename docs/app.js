@@ -612,11 +612,16 @@
   /* -------------------------------------------------------------
      5. MEANING QUIZ BUILDER
   ------------------------------------------------------------- */
-  function buildMeaningQuiz(vocabulary, card) {
+  function buildMeaningQuiz(vocabulary, card, progress = {}) {
     const correctMeaning = String(card.meaning || "").trim();
-    const uniqueDistractors = new Set();
+    // Track each displayed wrong meaning back to ONE vocabulary card. A
+    // meaning alone is insufficient because multiple words may share it.
+    const distractorsByMeaning = new Map();
 
-    const candidates = vocabulary.filter(w => w.id !== card.id && w.meaning && w.meaning !== correctMeaning);
+    const candidates = vocabulary.filter(w =>
+      w.id !== card.id && String(w.meaning || "").trim() &&
+      String(w.meaning).trim() !== correctMeaning
+    );
     // Fisher-Yates avoids the biased comparator used in Array.sort.
     const shuffled = [...candidates];
     for (let i = shuffled.length - 1; i > 0; i -= 1) {
@@ -625,17 +630,23 @@
     }
 
     for (const item of shuffled) {
-      const text = String(item.meaning || "").trim();
-      if (text && text !== correctMeaning && !uniqueDistractors.has(text)) {
-        uniqueDistractors.add(text);
-        if (uniqueDistractors.size >= 2) break;
+      const text = String(item.meaning).trim();
+      const previous = distractorsByMeaning.get(text);
+      if (!previous && distractorsByMeaning.size < 2) {
+        distractorsByMeaning.set(text, item);
+      } else if (previous && !wasEverReviewed(progress[previous.id]) &&
+                 wasEverReviewed(progress[item.id])) {
+        // If two cards share a meaning, prefer an already-reviewed one.
+        // Never accidentally mark several ambiguous cards as forgotten.
+        distractorsByMeaning.set(text, item);
       }
     }
 
     const choices = [
-      { id: "correct", text: correctMeaning, isCorrect: true },
-      ...Array.from(uniqueDistractors).map((text, index) => ({
+      { id: "correct", cardId: card.id, text: correctMeaning, isCorrect: true },
+      ...Array.from(distractorsByMeaning.entries()).map(([text, item], index) => ({
         id: `distractor-${index}`,
+        cardId: item.id,
         text,
         isCorrect: false
       }))
@@ -725,7 +736,7 @@
     els.pinyinReading.textContent = card.reading || "—";
 
     // Quiz Section
-    state.currentQuiz = buildMeaningQuiz(state.activePack.cards, card);
+    state.currentQuiz = buildMeaningQuiz(state.activePack.cards, card, state.store.progress);
     els.choicesGrid.innerHTML = "";
     els.revealedMeaning.hidden = true;
     els.quizPrompt.textContent = "Choose the correct meaning:";
@@ -831,6 +842,26 @@
     updateDashboardCounts();
   }
 
+  function forgetConfusedDistractor(choice) {
+    // A wrong answer is evidence of confusion about the displayed word AND
+    // the word behind the selected meaning, but never introduce a new word
+    // to the review history just because it appeared as a distractor.
+    if (!choice || choice.isCorrect || !choice.cardId ||
+        choice.cardId === state.currentCard?.id) return null;
+
+    const confusedCard = state.activePack?.cards.find(card => card.id === choice.cardId);
+    if (!confusedCard || !wasEverReviewed(state.store.progress[confusedCard.id])) {
+      return null;
+    }
+
+    state.store.progress[confusedCard.id] = reviewForget(
+      state.store.progress[confusedCard.id], getSrsDisplayMinutes()
+    );
+    saveStoredState();
+    updateDashboardCounts();
+    return confusedCard;
+  }
+
   function handleQuizAnswer(choice, clickedBtn) {
     if (state.quizAnswered) return;
     state.quizAnswered = true;
@@ -856,9 +887,12 @@
     // Apply one rating per presentation. Manual Remember/Forget buttons can
     // correct it without counting an additional review of the same card.
     rateCurrentCard(choice.isCorrect ? "remember" : "forget");
+    const confusedCard = choice.isCorrect ? null : forgetConfusedDistractor(choice);
     showToast(choice.isCorrect
       ? "Correct! SRS interval increased."
-      : "Incorrect. Word scheduled for review.");
+      : confusedCard
+        ? `Incorrect. ${state.currentCard.front} and ${confusedCard.front} marked Forget.`
+        : "Incorrect. Current word marked Forget.");
 
     // Do not restart audio on answer: the word may still be playing.
   }
