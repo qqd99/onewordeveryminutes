@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=7" />
+  <link rel="stylesheet" href="style.css?v=10" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -359,11 +359,11 @@
           <div class="setting-row">
             <div class="setting-info">
               <label for="audioEngineSelect">Audio Engine</label>
-              <p>Choose speech source (Online Audio never freezes)</p>
+              <p>Choose speech source (Online audio may be slower or unavailable; Auto is recommended)</p>
             </div>
             <div class="setting-control">
               <select id="audioEngineSelect" class="pack-select">
-                <option value="auto">Auto (Speech Synthesis + Online Fallback)</option>
+                <option value="auto">Auto (fast device voice + online fallback)</option>
                 <option value="online">Online Audio (HD Audio — Never Freezes)</option>
                 <option value="speechSynthesis">Device Speech Synthesis Only</option>
               </select>
@@ -398,11 +398,21 @@
           </div>
           <div class="setting-row">
             <div class="setting-info">
-              <label for="autoSpeakToggle">Auto-read on card presentation</label>
-              <p>Read word &amp; sentence aloud when a new card appears</p>
+              <label for="readWordToggle">Read word</label>
+              <p>Automatically pronounce the Chinese word when a card appears.</p>
             </div>
             <label class="toggle-switch">
-              <input type="checkbox" id="autoSpeakToggle" checked />
+              <input type="checkbox" id="readWordToggle" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="readSentenceToggle">Read sentence</label>
+              <p>Automatically pronounce the example sentence, even when Read word is off. Both switches work independently.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="readSentenceToggle" checked />
               <span class="slider"></span>
             </label>
           </div>
@@ -471,7 +481,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Load Scripts -->
-  <script src="srs.js?v=7"></script>
-  <script src="app.js?v=7"></script>
+  <script src="srs.js?v=10"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>
