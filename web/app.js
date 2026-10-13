@@ -593,8 +593,12 @@
     const uniqueDistractors = new Set();
 
     const candidates = vocabulary.filter(w => w.id !== card.id && w.meaning && w.meaning !== correctMeaning);
-    // Shuffle candidates
-    const shuffled = [...candidates].sort(() => 0.5 - Math.random());
+    // Fisher-Yates avoids the biased comparator used in Array.sort.
+    const shuffled = [...candidates];
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
 
     for (const item of shuffled) {
       const text = String(item.meaning || "").trim();
@@ -611,7 +615,11 @@
         text,
         isCorrect: false
       }))
-    ].sort(() => 0.5 - Math.random());
+    ];
+    for (let i = choices.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [choices[i], choices[j]] = [choices[j], choices[i]];
+    }
 
     return { choices, correctMeaning };
   }
@@ -772,7 +780,7 @@
     // Mark shown in SRS
     state.store.progress[card.id] = markShown(
       state.store.progress[card.id],
-      state.store.settings.intervalMinutes
+      getSrsDisplayMinutes()
     );
     saveStoredState();
 
@@ -808,7 +816,7 @@
 
     // Apply SRS algorithm
     const now = Date.now();
-    const intervalMins = state.store.settings.intervalMinutes;
+    const intervalMins = getSrsDisplayMinutes();
     if (choice.isCorrect) {
       state.store.progress[state.currentCard.id] = reviewRemember(
         state.store.progress[state.currentCard.id],
@@ -839,7 +847,7 @@
       state.store.progress,
       state.store.lastCardId,
       Date.now(),
-      state.store.settings.intervalMinutes
+      getSrsDisplayMinutes()
     );
     renderCard(nextCard, { autoSpeak });
   }
@@ -880,11 +888,12 @@
 
     els.newWordBtn.addEventListener("click", () => {
       if (!state.currentCard) return;
-      const progress = normalizeProgress(state.store.progress[state.currentCard.id]);
-      progress.lastReviewedAt = 0;
-      progress.repetitions = 0;
-      progress.intervalMinutes = 0;
-      state.store.progress[state.currentCard.id] = progress;
+      // Fully reset this card's review history: leaving remembered/forgotten
+      // counters behind makes wasEverReviewed() classify it as reviewed.
+      state.store.progress[state.currentCard.id] = {
+        ...defaultCardProgress(),
+        lastShownAt: Date.now()
+      };
       saveStoredState();
       updateDashboardCounts();
       showToast("Card status set to New Word");
@@ -895,7 +904,7 @@
       if (!state.currentCard) return;
       state.store.progress[state.currentCard.id] = reviewForget(
         state.store.progress[state.currentCard.id],
-        state.store.settings.intervalMinutes
+        getSrsDisplayMinutes()
       );
       saveStoredState();
       updateDashboardCounts();
@@ -906,7 +915,7 @@
       if (!state.currentCard) return;
       state.store.progress[state.currentCard.id] = reviewRemember(
         state.store.progress[state.currentCard.id],
-        state.store.settings.intervalMinutes
+        getSrsDisplayMinutes()
       );
       saveStoredState();
       updateDashboardCounts();
@@ -1122,6 +1131,12 @@
      9. REMINDER CADENCE TIMER & NOTIFICATIONS
   ------------------------------------------------------------- */
 
+  function getSrsDisplayMinutes() {
+    // The timer supports hours/minutes/seconds, but the SRS engine works
+    // in whole minutes. Use the entire cadence, not only the minute field.
+    return Math.max(1, Math.ceil(getTotalIntervalSeconds() / 60));
+  }
+
   function getTotalIntervalSeconds() {
     const s = state.store.settings;
     const hours = Math.max(0, parseInt(s.intervalHours, 10) || 0);
@@ -1150,6 +1165,7 @@
     }
 
     if (!state.store.settings.reminderEnabled) {
+      state.nextReminderTime = null;
       els.intervalTimerPill.classList.remove("active");
       els.timerStatusText.textContent = "Self-paced study";
       return;
@@ -1773,7 +1789,11 @@
   function setupKeyboardShortcuts() {
     window.addEventListener("keydown", (e) => {
       // Don't trigger shortcuts if user is typing in an input
-      if (["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName)) {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing ||
+          ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName) ||
+          document.activeElement?.isContentEditable ||
+          !els.tabButtons.some(btn => btn.dataset.tab === "study" && btn.classList.contains("active")) ||
+          els.resetModal.classList.contains("active")) {
         return;
       }
 
@@ -1872,7 +1892,7 @@
           state.store.progress,
           null,
           Date.now(),
-          state.store.settings.intervalMinutes
+          getSrsDisplayMinutes()
         );
       }
 
