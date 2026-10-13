@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=9" />
+  <link rel="stylesheet" href="style.css?v=10" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -398,21 +398,21 @@
           </div>
           <div class="setting-row">
             <div class="setting-info">
-              <label for="autoSpeakToggle">Auto-read words on card presentation</label>
-              <p>Pronounce each word automatically when a new card appears</p>
+              <label for="readWordToggle">Read word</label>
+              <p>Automatically pronounce the Chinese word when a card appears.</p>
             </div>
             <label class="toggle-switch">
-              <input type="checkbox" id="autoSpeakToggle" checked />
+              <input type="checkbox" id="readWordToggle" checked />
               <span class="slider"></span>
             </label>
           </div>
           <div class="setting-row">
             <div class="setting-info">
-              <label for="readSentencesToggle">Read example sentences automatically</label>
-              <p>After the word finishes, read its example sentence. Manual sentence buttons always work.</p>
+              <label for="readSentenceToggle">Read sentence</label>
+              <p>Automatically pronounce the example sentence, even when Read word is off. Both switches work independently.</p>
             </div>
             <label class="toggle-switch">
-              <input type="checkbox" id="readSentencesToggle" checked />
+              <input type="checkbox" id="readSentenceToggle" checked />
               <span class="slider"></span>
             </label>
           </div>
@@ -481,7 +481,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Load Scripts -->
-  <script src="srs.js?v=9"></script>
-  <script src="app.js?v=9"></script>
+  <script src="srs.js?v=10"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>
