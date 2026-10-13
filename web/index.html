@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=7" />
+  <link rel="stylesheet" href="style.css?v=8" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -398,11 +398,21 @@
           </div>
           <div class="setting-row">
             <div class="setting-info">
-              <label for="autoSpeakToggle">Auto-read on card presentation</label>
-              <p>Read word &amp; sentence aloud when a new card appears</p>
+              <label for="autoSpeakToggle">Auto-read words on card presentation</label>
+              <p>Pronounce each word automatically when a new card appears</p>
             </div>
             <label class="toggle-switch">
               <input type="checkbox" id="autoSpeakToggle" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="readSentencesToggle">Read example sentences automatically</label>
+              <p>After the word finishes, read its example sentence. Manual sentence buttons always work.</p>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="readSentencesToggle" checked />
               <span class="slider"></span>
             </label>
           </div>
@@ -471,7 +481,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Load Scripts -->
-  <script src="srs.js?v=7"></script>
-  <script src="app.js?v=7"></script>
+  <script src="srs.js?v=8"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>
