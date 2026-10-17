@@ -18,6 +18,7 @@
     quizAnswered: false,
     selectedChoiceId: null,
     currentReviewBaseline: null,
+    learningStatus: "idle", // idle | active | paused; resets on every page load
     store: {
       settings: {
         theme: "light",
@@ -68,8 +69,13 @@
     speakWordBtn: $("#speakWordBtn"),
     speakSentenceBtn: $("#speakSentenceBtn"),
     speakExampleBtn: $("#speakExampleBtn"),
-    audioActivationNotice: $("#audioActivationNotice"),
-    enableAudioBtn: $("#enableAudioBtn"),
+    flashcard: $("#flashcard"),
+    learningSessionGate: $("#learningSessionGate"),
+    learningSessionTitle: $("#learningSessionTitle"),
+    learningSessionText: $("#learningSessionText"),
+    startLearningBtn: $("#startLearningBtn"),
+    pauseLearningBtn: $("#pauseLearningBtn"),
+    resumeLearningBtn: $("#resumeLearningBtn"),
     hanziTerm: $("#hanziTerm"),
     pinyinReading: $("#pinyinReading"),
     quizPrompt: $("#quizPrompt"),
@@ -236,55 +242,6 @@
   let activeAudioEl = null;
   let cancelActivePlayback = null;
   let audioGeneration = 0;
-  let audioStartedThisVisit = false;
-  let audioBlockedUntilGesture = false;
-  let pageHadUserGesture = false;
-
-  function needsAudioActivation() {
-    // A user gesture is required for audio in many browsers. Do not spend
-    // multiple TTS timeouts on a page that has never been interacted with.
-    if (audioStartedThisVisit) return false;
-    if (audioBlockedUntilGesture) return true;
-    if (typeof navigator !== "undefined" &&
-        typeof navigator.userActivation?.hasBeenActive === "boolean") {
-      return !navigator.userActivation.hasBeenActive;
-    }
-    // Safari and older browsers do not expose navigator.userActivation.
-    return !pageHadUserGesture;
-  }
-
-  function showAudioActivationNotice() {
-    if (els.audioActivationNotice) els.audioActivationNotice.hidden = false;
-  }
-
-  function hideAudioActivationNotice() {
-    if (els.audioActivationNotice) els.audioActivationNotice.hidden = true;
-  }
-
-  function markAudioStarted() {
-    audioStartedThisVisit = true;
-    audioBlockedUntilGesture = false;
-    hideAudioActivationNotice();
-  }
-
-  function setupAudioActivation() {
-    const noteInteraction = () => {
-      pageHadUserGesture = true;
-      audioBlockedUntilGesture = false;
-    };
-    if (typeof document !== "undefined") {
-      document.addEventListener("pointerdown", noteInteraction, { capture: true });
-      document.addEventListener("keydown", noteInteraction, { capture: true });
-    }
-    els.enableAudioBtn?.addEventListener("click", () => {
-      if (!state.currentCard) return;
-      // Initiate playback synchronously in the trusted click handler, while
-      // the browser's transient user activation is still available.
-      noteInteraction();
-      void playCardSequence(state.currentCard, { userInitiated: true });
-    });
-  }
-
   const activeUtterances = new Set(); // Keep speech objects alive until they finish.
 
   function isCurrentAudio(generation) {
@@ -387,7 +344,6 @@
       const settle = (success) => {
         if (finished) return;
         finished = true;
-        if (success && isCurrentAudio(generation)) markAudioStarted();
         clearTimeout(startWatchdog);
         clearTimeout(playbackWatchdog);
         audio.onplaying = null;
@@ -405,7 +361,6 @@
       const started = () => {
         if (finished || playbackWatchdog !== null) return;
         clearTimeout(startWatchdog);
-        markAudioStarted();
         // A correctly playing sentence can last much longer than 3 seconds.
         playbackWatchdog = setTimeout(() => settle(false), 45000);
       };
@@ -416,13 +371,7 @@
       audio.onerror = () => settle(false);
       try {
         const playing = audio.play();
-        if (playing?.then) playing.then(started, err => {
-          if (err?.name === "NotAllowedError") {
-            audioBlockedUntilGesture = true;
-            showAudioActivationNotice();
-          }
-          settle(false);
-        });
+        if (playing?.then) playing.then(started, () => settle(false));
       } catch (_) {
         settle(false);
       }
@@ -441,7 +390,7 @@
       if (!isCurrentAudio(generation)) return false;
       let played = false;
       for (const provider of providers) {
-        if (!isCurrentAudio(generation) || audioBlockedUntilGesture) return false;
+        if (!isCurrentAudio(generation)) return false;
         played = await playOnlineOnce(provider(clean, lang), generation, volume);
         if (played) break;
       }
@@ -472,7 +421,6 @@
       const settle = (success) => {
         if (settled) return;
         settled = true;
-        if (success && isCurrentAudio(generation)) markAudioStarted();
         clearTimeout(startWatchdog);
         clearTimeout(finishWatchdog);
         utterance.onstart = null;
@@ -488,16 +436,9 @@
 
       utterance.onstart = () => {
         started = true;
-        markAudioStarted();
       };
       utterance.onend = () => settle(true);
-      utterance.onerror = event => {
-        if (/not[-_]?allowed/i.test(String(event?.error || ""))) {
-          audioBlockedUntilGesture = true;
-          showAudioActivationNotice();
-        }
-        settle(false);
-      };
+      utterance.onerror = () => settle(false);
 
       // Attempt native playback immediately. Recover promptly if the browser
       // never starts, rather than waiting five seconds before trying online.
@@ -562,25 +503,17 @@
     const succeeded = await speakSegment(text, { lang, repeat, generation });
     if (!succeeded && isCurrentAudio(generation) && (state.store.settings.volume ?? 100) > 0) {
       console.warn("Audio could not start:", text);
-      if (!audioStartedThisVisit) showAudioActivationNotice();
-      else showToast("Audio unavailable. Try another voice or Audio Engine in Settings.");
+      showToast("Audio unavailable. Try another voice or Audio Engine in Settings.");
     }
     return succeeded;
   }
 
-  async function playCardSequence(card, { userInitiated = false } = {}) {
+  async function playCardSequence(card) {
     if (!card) return;
     const readWord = state.store.settings.readWords !== false;
     const readSentence = state.store.settings.readSentences !== false;
     const generation = stopAudio();
-    if ((!readWord && !readSentence) || (state.store.settings.volume ?? 100) === 0) {
-      hideAudioActivationNotice();
-      return;
-    }
-    if (!userInitiated && needsAudioActivation()) {
-      showAudioActivationNotice();
-      return;
-    }
+    if ((!readWord && !readSentence) || (state.store.settings.volume ?? 100) === 0) return;
 
     const repeatCount = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
     if (readWord) {
@@ -594,8 +527,7 @@
         // Do not silently replace a failed requested word with its sentence.
         if ((state.store.settings.volume ?? 100) > 0) {
           console.warn("Could not play the word; example playback was not substituted.");
-          if (!audioStartedThisVisit) showAudioActivationNotice();
-          else showToast("Word audio unavailable. Try Hear Word or another Audio Engine.");
+          showToast("Word audio unavailable. Try Hear Word or another Audio Engine.");
         }
         return;
       }
