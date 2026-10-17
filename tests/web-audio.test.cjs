@@ -218,8 +218,10 @@ test("sentence-on sequence uses the native voice for both segments", async () =>
     ["你好", "你好", "你好，朋友！", "你好，朋友！"]);
 });
 
-test("initial web card attempts automatic speech and does not restart on quiz answer", () => {
-  assert.match(source, /renderCard\(initialCard, \{ autoPlay: true \}\)/);
+test("Start learning begins automatic speech and quiz answer does not restart it", () => {
+  const start = source.slice(source.indexOf("  function startLearning("),
+    source.indexOf("  function pauseLearning("));
+  assert.match(start, /renderCard\(card, \{ autoPlay: true \}\)/);
   const answer = source.slice(source.indexOf("  function handleQuizAnswer("),
     source.indexOf("  function presentNextCard("));
   assert.doesNotMatch(answer, /playCardSequence\(/);
