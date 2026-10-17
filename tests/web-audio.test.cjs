@@ -45,6 +45,7 @@ function createAudioHarness(overrides = {}, failText = null, hangText = null) {
     } },
     Audio: FakeAudio,
     state: { store: { settings }, availableVoices: [] },
+    navigator: { userActivation: { hasBeenActive: true } },
     els: { voiceSelect: null },
     SpeechSynthesisUtterance: class {},
     console: { warn() {} },
@@ -178,6 +179,7 @@ function createNativeHarness({ readSentences = false, failSecond = false } = {})
   }
   const context = {
     window: { speechSynthesis: voiceEngine },
+    navigator: { userActivation: { hasBeenActive: true } },
     Audio: FakeOnlineAudio,
     SpeechSynthesisUtterance: FakeUtterance,
     state, els: { voiceSelect: null },
