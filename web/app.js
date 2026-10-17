@@ -238,14 +238,19 @@
   let audioGeneration = 0;
   let audioStartedThisVisit = false;
   let audioBlockedUntilGesture = false;
+  let pageHadUserGesture = false;
 
   function needsAudioActivation() {
     // A user gesture is required for audio in many browsers. Do not spend
     // multiple TTS timeouts on a page that has never been interacted with.
     if (audioStartedThisVisit) return false;
     if (audioBlockedUntilGesture) return true;
-    return typeof navigator !== "undefined" &&
-      navigator.userActivation?.hasBeenActive === false;
+    if (typeof navigator !== "undefined" &&
+        typeof navigator.userActivation?.hasBeenActive === "boolean") {
+      return !navigator.userActivation.hasBeenActive;
+    }
+    // Safari and older browsers do not expose navigator.userActivation.
+    return !pageHadUserGesture;
   }
 
   function showAudioActivationNotice() {
@@ -263,11 +268,19 @@
   }
 
   function setupAudioActivation() {
+    const noteInteraction = () => {
+      pageHadUserGesture = true;
+      audioBlockedUntilGesture = false;
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("pointerdown", noteInteraction, { capture: true });
+      document.addEventListener("keydown", noteInteraction, { capture: true });
+    }
     els.enableAudioBtn?.addEventListener("click", () => {
       if (!state.currentCard) return;
       // Initiate playback synchronously in the trusted click handler, while
       // the browser's transient user activation is still available.
-      audioBlockedUntilGesture = false;
+      noteInteraction();
       void playCardSequence(state.currentCard, { userInitiated: true });
     });
   }
