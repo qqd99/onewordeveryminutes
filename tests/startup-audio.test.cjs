@@ -15,17 +15,18 @@ const sample = {
   example: { text: "你好，朋友！", speechLang: "zh-CN" }
 };
 
-function makeHarness({ activated = false, settings = {}, rejectPlayback = false } = {}) {
+function makeHarness({ activated = false, exposeActivation = true, settings = {}, rejectPlayback = false } = {}) {
   const calls = [];
   const notice = { hidden: true };
   const listeners = new Map();
+  const gestures = new Map();
   const button = {
     addEventListener(event, fn) { listeners.set(event, fn); },
     click() {
       const fn = listeners.get("click");
       assert.ok(fn, "Enable sound button must be wired");
       // In the real browser this click supplies user activation.
-      sandbox.navigator.userActivation.hasBeenActive = true;
+      if (sandbox.navigator.userActivation) sandbox.navigator.userActivation.hasBeenActive = true;
       fn();
     }
   };
@@ -51,7 +52,8 @@ function makeHarness({ activated = false, settings = {}, rejectPlayback = false 
     }
   }
   const sandbox = {
-    navigator: { userActivation: { hasBeenActive: activated } },
+    navigator: exposeActivation ? { userActivation: { hasBeenActive: activated } } : {},
+    document: { addEventListener: (type, fn) => gestures.set(type, fn) },
     state,
     els: { voiceSelect: null, audioActivationNotice: notice, enableAudioBtn: button },
     window: { speechSynthesis: {
@@ -73,7 +75,7 @@ function makeHarness({ activated = false, settings = {}, rejectPlayback = false 
   vm.runInNewContext(audioModule + "\nglobalThis.api = " +
     "{ playCardSequence, setupAudioActivation, speak, stopAudio };", sandbox);
   sandbox.api.setupAudioActivation();
-  return { api: sandbox.api, calls, notice, button, state, sandbox };
+  return { api: sandbox.api, calls, notice, button, state, sandbox, gestures };
 }
 
 async function flush() {
@@ -156,4 +158,25 @@ test("web HTML includes sound unlock button and app wires it up", () => {
   assert.match(html, /id="audioActivationNotice"/);
   assert.match(html, /id="enableAudioBtn"/);
   assert.match(app, /setupAudioActivation\(\);/);
+});
+
+test("browsers without userActivation API still wait for first gesture and then autoplay", async () => {
+  const h = makeHarness({ exposeActivation: false });
+  await h.api.playCardSequence(sample);
+  assert.equal(h.notice.hidden, false);
+  assert.deepEqual(h.calls, []);
+  assert.ok(h.gestures.has("pointerdown"));
+  h.gestures.get("pointerdown")(); // A user's first tap on the webpage.
+  await h.api.playCardSequence(sample);
+  assert.deepEqual(h.calls, ["你好", "你好"]);
+  assert.equal(h.notice.hidden, true);
+});
+
+test("Enable sound works on browsers without navigator.userActivation", async () => {
+  const h = makeHarness({ exposeActivation: false });
+  await h.api.playCardSequence(sample);
+  h.button.click();
+  await flush();
+  assert.deepEqual(h.calls, ["你好", "你好"]);
+  assert.equal(h.notice.hidden, true);
 });
