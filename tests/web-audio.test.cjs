@@ -14,6 +14,7 @@ const audioModule = source.slice(start, end);
 function createAudioHarness(overrides = {}, failText = null, hangText = null) {
   const spoken = [];
   const toasts = [];
+  const audioActivationNotice = { hidden: true };
   const settings = {
     volume: 100,
     readWords: true,
@@ -46,7 +47,7 @@ function createAudioHarness(overrides = {}, failText = null, hangText = null) {
     Audio: FakeAudio,
     state: { store: { settings }, availableVoices: [] },
     navigator: { userActivation: { hasBeenActive: true } },
-    els: { voiceSelect: null },
+    els: { voiceSelect: null, audioActivationNotice },
     SpeechSynthesisUtterance: class {},
     console: { warn() {} },
     showToast: message => toasts.push(message),
@@ -70,7 +71,7 @@ function createAudioHarness(overrides = {}, failText = null, hangText = null) {
   };
   vm.runInNewContext(audioModule +
     "\nglobalThis.audioApi = { speak, playCardSequence, stopAudio };", context);
-  return { api: context.audioApi, spoken, toasts, settings };
+  return { api: context.audioApi, spoken, toasts, settings, audioActivationNotice };
 }
 
 const card = {
@@ -103,7 +104,8 @@ test("failed word audio is not replaced by example sentence", async () => {
   await h.api.playCardSequence(card);
   assert.equal(h.spoken.length, 3); // Two Google sources + Chinese Youdao fallback.
   assert.ok(h.spoken.every(text => text === "你好"));
-  assert.equal(h.toasts.length, 1);
+  assert.equal(h.toasts.length, 0);
+  assert.equal(h.audioActivationNotice.hidden, false);
 });
 
 test("new playback cancels stale word and prevents its sentence", async () => {
