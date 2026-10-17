@@ -374,6 +374,7 @@
       const settle = (success) => {
         if (finished) return;
         finished = true;
+        if (success && isCurrentAudio(generation)) markAudioStarted();
         clearTimeout(startWatchdog);
         clearTimeout(playbackWatchdog);
         audio.onplaying = null;
@@ -458,6 +459,7 @@
       const settle = (success) => {
         if (settled) return;
         settled = true;
+        if (success && isCurrentAudio(generation)) markAudioStarted();
         clearTimeout(startWatchdog);
         clearTimeout(finishWatchdog);
         utterance.onstart = null;
@@ -558,7 +560,7 @@
     const readWord = state.store.settings.readWords !== false;
     const readSentence = state.store.settings.readSentences !== false;
     const generation = stopAudio();
-    if (!readWord && !readSentence || (state.store.settings.volume ?? 100) === 0) {
+    if ((!readWord && !readSentence) || (state.store.settings.volume ?? 100) === 0) {
       hideAudioActivationNotice();
       return;
     }
