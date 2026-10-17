@@ -114,3 +114,12 @@ For a permanent one-source setup, open the repository's **Settings → Pages →
 When a learner chooses the wrong meaning on a Chinese vocabulary quiz, the displayed card is marked **Forget**, as before. If the selected distractor meaning comes from another vocabulary card that has already been reviewed (Remember or Forget), that particular card is **also marked Forget**. For example, choosing **mistake (错)** instead of **good** on **好** marks both 好 and 错 Forget if 错 is already in the review history.
 
 A **New** distractor stays New; simply appearing as an answer choice does not count as learning or reviewing it. Correct answers do not affect distractors, unselected answers never change, and a second click cannot penalize the same choice twice. Each choice keeps its source card ID, so multiple words with the same English definition do not all get marked Forget. The existing manual Remember/Forget buttons can still correct the displayed card's rating.
+
+
+## First-visit browser audio
+
+Browsers can block Web Speech and online audio until a person interacts with a webpage. On a fresh visit, the web app now displays an **Enable sound** button next to the current flashcard when user activation is required. Click it once to hear **the current card** immediately; future reminder cards will speak automatically during that page session, subject to the browser's audio policies. The button is not a quiz answer and does not change learning progress.
+
+Before activation, reminder cards can still advance normally, but the site does **not** repeatedly wait through failed audio providers or mislabel every word as permanently unavailable. Once the user enables sound, the chosen Read word / Read sentence settings still apply independently. Browsers that report prior user activation play automatically as before. If audio remains unavailable, use **Audio Engine** or **Test & Fix Sound** in Settings.
+
+The v12 update is published identically through both the \`web/\` GitHub Actions site and the \`docs/\` Pages site, with a refreshed PWA cache and automated playback tests.
