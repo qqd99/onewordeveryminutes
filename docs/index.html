@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=12" />
+  <link rel="stylesheet" href="style.css?v=13" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -69,10 +69,26 @@
           <div class="stat-item-inline">New: <strong id="studyNewCount">0</strong></div>
           <div class="stat-item-inline">Reviewed: <strong id="studyReviewedCount">0</strong></div>
         </div>
+
+        <button id="pauseLearningBtn" class="btn btn-secondary session-pause-btn" type="button" hidden>
+          ⏸ Pause learning
+        </button>
       </div>
 
+      <section class="learning-session-gate" id="learningSessionGate" aria-live="polite">
+        <div class="learning-session-icon">📚</div>
+        <h2 id="learningSessionTitle">Ready to learn?</h2>
+        <p id="learningSessionText">Loading vocabulary…</p>
+        <button id="startLearningBtn" class="btn btn-primary session-main-btn" type="button" disabled>
+          ▶ Start learning
+        </button>
+        <button id="resumeLearningBtn" class="btn btn-primary session-main-btn" type="button" hidden>
+          ▶ Resume learning
+        </button>
+      </section>
+
       <!-- Flashcard / Quiz Component -->
-      <article class="flashcard" id="flashcard" aria-live="polite">
+      <article class="flashcard" id="flashcard" aria-live="polite" hidden>
         <div class="card-header-bar">
           <span class="stage-badge" id="stageBadge">NEW WORD</span>
           <div class="speak-controls">
@@ -83,11 +99,6 @@
               🔊 Sentence
             </button>
           </div>
-        </div>
-
-        <div class="audio-activation-notice" id="audioActivationNotice" role="status" hidden>
-          <span>Your browser needs a tap before it can play vocabulary automatically.</span>
-          <button id="enableAudioBtn" class="audio-enable-btn" type="button">🔊 Enable sound</button>
         </div>
 
         <div class="term-container">
@@ -486,7 +497,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Load Scripts -->
-  <script src="srs.js?v=12"></script>
-  <script src="app.js?v=12"></script>
+  <script src="srs.js?v=13"></script>
+  <script src="app.js?v=13"></script>
 </body>
 </html>
