@@ -395,6 +395,38 @@ body {
   border-color: var(--primary);
 }
 
+.audio-activation-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: var(--primary-light);
+  border: 1px solid var(--primary-border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--text-main);
+}
+
+.audio-enable-btn {
+  background: var(--primary);
+  color: #fff;
+  border: 0;
+  border-radius: var(--radius-full);
+  padding: 8px 14px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.audio-enable-btn:hover,
+.audio-enable-btn:focus-visible {
+  background: #2563eb;
+  outline-offset: 2px;
+}
+
 .term-container {
   margin: 16px 0 10px;
 }
