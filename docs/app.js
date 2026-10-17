@@ -238,14 +238,19 @@
   let audioGeneration = 0;
   let audioStartedThisVisit = false;
   let audioBlockedUntilGesture = false;
+  let pageHadUserGesture = false;
 
   function needsAudioActivation() {
     // A user gesture is required for audio in many browsers. Do not spend
     // multiple TTS timeouts on a page that has never been interacted with.
     if (audioStartedThisVisit) return false;
     if (audioBlockedUntilGesture) return true;
-    return typeof navigator !== "undefined" &&
-      navigator.userActivation?.hasBeenActive === false;
+    if (typeof navigator !== "undefined" &&
+        typeof navigator.userActivation?.hasBeenActive === "boolean") {
+      return !navigator.userActivation.hasBeenActive;
+    }
+    // Safari and older browsers do not expose navigator.userActivation.
+    return !pageHadUserGesture;
   }
 
   function showAudioActivationNotice() {
@@ -263,11 +268,19 @@
   }
 
   function setupAudioActivation() {
+    const noteInteraction = () => {
+      pageHadUserGesture = true;
+      audioBlockedUntilGesture = false;
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("pointerdown", noteInteraction, { capture: true });
+      document.addEventListener("keydown", noteInteraction, { capture: true });
+    }
     els.enableAudioBtn?.addEventListener("click", () => {
       if (!state.currentCard) return;
       // Initiate playback synchronously in the trusted click handler, while
       // the browser's transient user activation is still available.
-      audioBlockedUntilGesture = false;
+      noteInteraction();
       void playCardSequence(state.currentCard, { userInitiated: true });
     });
   }
@@ -772,7 +785,10 @@
   function renderCard(card, { autoPlay = true } = {}) {
     // Avoid double-cancelling speech right before a new reading starts.
     // playCardSequence() handles cancellation for spoken cards.
-    if (!autoPlay || (state.store.settings.readWords === false && state.store.settings.readSentences === false)) stopAudio();
+    const automaticReadingOff = state.store.settings.readWords === false &&
+      state.store.settings.readSentences === false;
+    if (!autoPlay || automaticReadingOff) stopAudio();
+    if (automaticReadingOff) hideAudioActivationNotice();
     state.currentCard = card;
     state.quizAnswered = false;
     state.selectedChoiceId = null;
@@ -1758,11 +1774,15 @@
     els.readWordToggle.checked = state.store.settings.readWords !== false;
     els.readWordToggle.addEventListener("change", (e) => {
       state.store.settings.readWords = e.target.checked;
+      if (state.store.settings.readWords === false &&
+          state.store.settings.readSentences === false) hideAudioActivationNotice();
       saveStoredState();
     });
     els.readSentenceToggle.checked = state.store.settings.readSentences !== false;
     els.readSentenceToggle.addEventListener("change", (e) => {
       state.store.settings.readSentences = e.target.checked;
+      if (state.store.settings.readWords === false &&
+          state.store.settings.readSentences === false) hideAudioActivationNotice();
       saveStoredState();
     });
 
