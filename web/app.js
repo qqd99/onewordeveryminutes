@@ -785,7 +785,10 @@
   function renderCard(card, { autoPlay = true } = {}) {
     // Avoid double-cancelling speech right before a new reading starts.
     // playCardSequence() handles cancellation for spoken cards.
-    if (!autoPlay || (state.store.settings.readWords === false && state.store.settings.readSentences === false)) stopAudio();
+    const automaticReadingOff = state.store.settings.readWords === false &&
+      state.store.settings.readSentences === false;
+    if (!autoPlay || automaticReadingOff) stopAudio();
+    if (automaticReadingOff) hideAudioActivationNotice();
     state.currentCard = card;
     state.quizAnswered = false;
     state.selectedChoiceId = null;
@@ -1771,11 +1774,15 @@
     els.readWordToggle.checked = state.store.settings.readWords !== false;
     els.readWordToggle.addEventListener("change", (e) => {
       state.store.settings.readWords = e.target.checked;
+      if (state.store.settings.readWords === false &&
+          state.store.settings.readSentences === false) hideAudioActivationNotice();
       saveStoredState();
     });
     els.readSentenceToggle.checked = state.store.settings.readSentences !== false;
     els.readSentenceToggle.addEventListener("change", (e) => {
       state.store.settings.readSentences = e.target.checked;
+      if (state.store.settings.readWords === false &&
+          state.store.settings.readSentences === false) hideAudioActivationNotice();
       saveStoredState();
     });
 
