@@ -61,7 +61,7 @@ Then open `http://localhost:8080` in your browser.
   - Web Speech API (`SpeechSynthesis`) with auto-selection of native Chinese voices (`zh-CN`, `cmn`).
   - Online audio fallback (Google & Youdao TTS) for unsupported platforms.
   - Configurable word repetition, sentence playback toggle (enabled by default), and speed/volume controls. Word playback completes before a sentence begins, and answering a quiz no longer restarts speech.
-- **Word List & Deck Browser**: Search and filter all 1,000 HSK words by status (*Due*, *Reviewed*, *New*, or *All*). Click any word to practice it immediately or listen to pronunciation.
+- **Word List & Deck Browser**: Search and filter all 1,000 HSK words by status (*Due*, *Reviewed*, *New*, or *All*). During an active learning session, click a word to practice it immediately; pronunciation buttons remain available separately.
 - **Study Modes**:
   - **Self-Paced Study**: Review at your own speed with keyboard shortcuts (`1`, `2`, `3` for answers, `Space` for audio/next, `R` for Remember, `F` for Forget, `N` for New Word).
   - **Interval Reminder Mode**: Automatically prompts you with cards every *X* minutes with optional desktop/browser notifications.
@@ -86,7 +86,7 @@ On GitHub Pages, commits merged into `main` trigger `.github/workflows/deploy.ym
 
 - **Auto** tries browser speech first, including when the browser initially reports no voices. Word pronunciation begins immediately whenever the browser permits playback; online audio is a fallback with shorter timeouts. Some browsers block automatic sound until you interact with the page; press **🔊 Word** in that case.
 - **Auto-read on card presentation** controls the word, while **Read example sentences automatically** only controls the optional example after the word. Turning sentences off must not mute words. Manual pronunciation buttons work independently.
-- Initial cards attempt pronunciation, and answering a quiz no longer restarts or interrupts the reading.
+- A learning session starts only after **Start learning** is pressed; this intentional user action also gives browsers a valid interaction for automatic pronunciation. Answering a quiz no longer restarts or interrupts the reading.
 - New Word now resets review history properly, SRS uses the full hours/minutes/seconds cadence, translations ignore obsolete results, and backup imports accept only known vocabulary IDs.
 - New builds refresh the installed PWA's service-worker cache and JavaScript assets.
 
@@ -116,10 +116,10 @@ When a learner chooses the wrong meaning on a Chinese vocabulary quiz, the displ
 A **New** distractor stays New; simply appearing as an answer choice does not count as learning or reviewing it. Correct answers do not affect distractors, unselected answers never change, and a second click cannot penalize the same choice twice. Each choice keeps its source card ID, so multiple words with the same English definition do not all get marked Forget. The existing manual Remember/Forget buttons can still correct the displayed card's rating.
 
 
-## First-visit browser audio
+## Start, pause, and resume learning sessions (v13)
 
-Browsers can block Web Speech and online audio until a person interacts with a webpage. On a fresh visit, the web app now displays an **Enable sound** button next to the current flashcard when user activation is required. Click it once to hear **the current card** immediately; future reminder cards will speak automatically during that page session, subject to the browser's audio policies. The button is not a quiz answer and does not change learning progress.
+Every page visit begins with **no study card visible**. Press **Start learning** to reveal the first card, begin the reminder countdown (when enabled), and start the configured word/sentence pronunciation. Because Start learning is a deliberate click, it also provides the browser interaction normally required before automatic audio can play.
 
-Before activation, reminder cards can still advance normally, but the site does **not** repeatedly wait through failed audio providers or mislabel every word as permanently unavailable. Once the user enables sound, the chosen Read word / Read sentence settings still apply independently. Browsers that report prior user activation play automatically as before. If audio remains unavailable, use **Audio Engine** or **Test & Fix Sound** in Settings.
+Use **Pause learning** at any time to stop the current audio, stop the reminder timer, and hide the study card. While paused, reminder events cannot advance or display another card. **Resume learning** restores the same in-progress card, restarts pronunciation according to the Read word / Read sentence settings, and starts a fresh reminder countdown. Refreshing or reopening the page returns to the Start learning screen rather than silently resuming a session.
 
-The v12 update is published identically through both the \`web/\` GitHub Actions site and the \`docs/\` Pages site, with a refreshed PWA cache and automated playback tests.
+Session start/pause state is intentionally temporary and is not written into exported SRS progress. Vocabulary progress and the current-card ID are still persisted normally. The v13 build is kept identical in both `web/` and `docs/` so either GitHub Pages publishing path serves the same interface.
