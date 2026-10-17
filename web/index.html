@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=11" />
+  <link rel="stylesheet" href="style.css?v=12" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -83,6 +83,11 @@
               🔊 Sentence
             </button>
           </div>
+        </div>
+
+        <div class="audio-activation-notice" id="audioActivationNotice" role="status" hidden>
+          <span>Your browser needs a tap before it can play vocabulary automatically.</span>
+          <button id="enableAudioBtn" class="audio-enable-btn" type="button">🔊 Enable sound</button>
         </div>
 
         <div class="term-container">
@@ -481,7 +486,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Load Scripts -->
-  <script src="srs.js?v=11"></script>
-  <script src="app.js?v=11"></script>
+  <script src="srs.js?v=12"></script>
+  <script src="app.js?v=12"></script>
 </body>
 </html>
