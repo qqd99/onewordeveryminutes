@@ -18,6 +18,7 @@
     quizAnswered: false,
     selectedChoiceId: null,
     currentReviewBaseline: null,
+    learningStatus: "idle", // idle | active | paused; resets on every page load
     store: {
       settings: {
         theme: "light",
@@ -68,8 +69,13 @@
     speakWordBtn: $("#speakWordBtn"),
     speakSentenceBtn: $("#speakSentenceBtn"),
     speakExampleBtn: $("#speakExampleBtn"),
-    audioActivationNotice: $("#audioActivationNotice"),
-    enableAudioBtn: $("#enableAudioBtn"),
+    flashcard: $("#flashcard"),
+    learningSessionGate: $("#learningSessionGate"),
+    learningSessionTitle: $("#learningSessionTitle"),
+    learningSessionText: $("#learningSessionText"),
+    startLearningBtn: $("#startLearningBtn"),
+    pauseLearningBtn: $("#pauseLearningBtn"),
+    resumeLearningBtn: $("#resumeLearningBtn"),
     hanziTerm: $("#hanziTerm"),
     pinyinReading: $("#pinyinReading"),
     quizPrompt: $("#quizPrompt"),
@@ -236,55 +242,6 @@
   let activeAudioEl = null;
   let cancelActivePlayback = null;
   let audioGeneration = 0;
-  let audioStartedThisVisit = false;
-  let audioBlockedUntilGesture = false;
-  let pageHadUserGesture = false;
-
-  function needsAudioActivation() {
-    // A user gesture is required for audio in many browsers. Do not spend
-    // multiple TTS timeouts on a page that has never been interacted with.
-    if (audioStartedThisVisit) return false;
-    if (audioBlockedUntilGesture) return true;
-    if (typeof navigator !== "undefined" &&
-        typeof navigator.userActivation?.hasBeenActive === "boolean") {
-      return !navigator.userActivation.hasBeenActive;
-    }
-    // Safari and older browsers do not expose navigator.userActivation.
-    return !pageHadUserGesture;
-  }
-
-  function showAudioActivationNotice() {
-    if (els.audioActivationNotice) els.audioActivationNotice.hidden = false;
-  }
-
-  function hideAudioActivationNotice() {
-    if (els.audioActivationNotice) els.audioActivationNotice.hidden = true;
-  }
-
-  function markAudioStarted() {
-    audioStartedThisVisit = true;
-    audioBlockedUntilGesture = false;
-    hideAudioActivationNotice();
-  }
-
-  function setupAudioActivation() {
-    const noteInteraction = () => {
-      pageHadUserGesture = true;
-      audioBlockedUntilGesture = false;
-    };
-    if (typeof document !== "undefined") {
-      document.addEventListener("pointerdown", noteInteraction, { capture: true });
-      document.addEventListener("keydown", noteInteraction, { capture: true });
-    }
-    els.enableAudioBtn?.addEventListener("click", () => {
-      if (!state.currentCard) return;
-      // Initiate playback synchronously in the trusted click handler, while
-      // the browser's transient user activation is still available.
-      noteInteraction();
-      void playCardSequence(state.currentCard, { userInitiated: true });
-    });
-  }
-
   const activeUtterances = new Set(); // Keep speech objects alive until they finish.
 
   function isCurrentAudio(generation) {
@@ -387,7 +344,6 @@
       const settle = (success) => {
         if (finished) return;
         finished = true;
-        if (success && isCurrentAudio(generation)) markAudioStarted();
         clearTimeout(startWatchdog);
         clearTimeout(playbackWatchdog);
         audio.onplaying = null;
@@ -405,7 +361,6 @@
       const started = () => {
         if (finished || playbackWatchdog !== null) return;
         clearTimeout(startWatchdog);
-        markAudioStarted();
         // A correctly playing sentence can last much longer than 3 seconds.
         playbackWatchdog = setTimeout(() => settle(false), 45000);
       };
@@ -416,13 +371,7 @@
       audio.onerror = () => settle(false);
       try {
         const playing = audio.play();
-        if (playing?.then) playing.then(started, err => {
-          if (err?.name === "NotAllowedError") {
-            audioBlockedUntilGesture = true;
-            showAudioActivationNotice();
-          }
-          settle(false);
-        });
+        if (playing?.then) playing.then(started, () => settle(false));
       } catch (_) {
         settle(false);
       }
@@ -441,7 +390,7 @@
       if (!isCurrentAudio(generation)) return false;
       let played = false;
       for (const provider of providers) {
-        if (!isCurrentAudio(generation) || audioBlockedUntilGesture) return false;
+        if (!isCurrentAudio(generation)) return false;
         played = await playOnlineOnce(provider(clean, lang), generation, volume);
         if (played) break;
       }
@@ -472,7 +421,6 @@
       const settle = (success) => {
         if (settled) return;
         settled = true;
-        if (success && isCurrentAudio(generation)) markAudioStarted();
         clearTimeout(startWatchdog);
         clearTimeout(finishWatchdog);
         utterance.onstart = null;
@@ -488,16 +436,9 @@
 
       utterance.onstart = () => {
         started = true;
-        markAudioStarted();
       };
       utterance.onend = () => settle(true);
-      utterance.onerror = event => {
-        if (/not[-_]?allowed/i.test(String(event?.error || ""))) {
-          audioBlockedUntilGesture = true;
-          showAudioActivationNotice();
-        }
-        settle(false);
-      };
+      utterance.onerror = () => settle(false);
 
       // Attempt native playback immediately. Recover promptly if the browser
       // never starts, rather than waiting five seconds before trying online.
@@ -562,25 +503,17 @@
     const succeeded = await speakSegment(text, { lang, repeat, generation });
     if (!succeeded && isCurrentAudio(generation) && (state.store.settings.volume ?? 100) > 0) {
       console.warn("Audio could not start:", text);
-      if (!audioStartedThisVisit) showAudioActivationNotice();
-      else showToast("Audio unavailable. Try another voice or Audio Engine in Settings.");
+      showToast("Audio unavailable. Try another voice or Audio Engine in Settings.");
     }
     return succeeded;
   }
 
-  async function playCardSequence(card, { userInitiated = false } = {}) {
+  async function playCardSequence(card) {
     if (!card) return;
     const readWord = state.store.settings.readWords !== false;
     const readSentence = state.store.settings.readSentences !== false;
     const generation = stopAudio();
-    if ((!readWord && !readSentence) || (state.store.settings.volume ?? 100) === 0) {
-      hideAudioActivationNotice();
-      return;
-    }
-    if (!userInitiated && needsAudioActivation()) {
-      showAudioActivationNotice();
-      return;
-    }
+    if ((!readWord && !readSentence) || (state.store.settings.volume ?? 100) === 0) return;
 
     const repeatCount = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
     if (readWord) {
@@ -594,8 +527,7 @@
         // Do not silently replace a failed requested word with its sentence.
         if ((state.store.settings.volume ?? 100) > 0) {
           console.warn("Could not play the word; example playback was not substituted.");
-          if (!audioStartedThisVisit) showAudioActivationNotice();
-          else showToast("Word audio unavailable. Try Hear Word or another Audio Engine.");
+          showToast("Word audio unavailable. Try Hear Word or another Audio Engine.");
         }
         return;
       }
@@ -782,13 +714,112 @@
     return result;
   }
 
+  function updateLearningSessionUi() {
+    const active = state.learningStatus === "active";
+    const paused = state.learningStatus === "paused";
+
+    if (els.flashcard) els.flashcard.hidden = !active;
+    if (els.learningSessionGate) els.learningSessionGate.hidden = active;
+    if (els.pauseLearningBtn) els.pauseLearningBtn.hidden = !active;
+    if (els.startLearningBtn) els.startLearningBtn.hidden = paused;
+    if (els.resumeLearningBtn) els.resumeLearningBtn.hidden = !paused;
+
+    if (!active && els.intervalTimerPill) {
+      els.intervalTimerPill.classList.remove("active");
+      state.nextReminderTime = null;
+    }
+
+    if (paused) {
+      if (els.learningSessionTitle) els.learningSessionTitle.textContent = "Learning paused";
+      if (els.learningSessionText) {
+        els.learningSessionText.textContent = "No study cards will appear and reminder cards are stopped until you resume.";
+      }
+      if (els.timerStatusText) els.timerStatusText.textContent = "Learning paused";
+    } else if (!active) {
+      if (els.learningSessionTitle) els.learningSessionTitle.textContent = "Ready to learn?";
+      if (els.learningSessionText) {
+        els.learningSessionText.textContent = state.activePack
+          ? "Press Start learning to show the first card and begin automatic pronunciation."
+          : "Loading vocabulary…";
+      }
+      if (els.timerStatusText) els.timerStatusText.textContent = "Learning not started";
+    }
+  }
+
+  function getStartingCard() {
+    if (!state.activePack) return null;
+    const savedId = state.store.currentCardId;
+    const saved = savedId ? state.activePack.cards.find(card => card.id === savedId) : null;
+    return saved || chooseNextCard(
+      state.activePack.cards,
+      state.store.progress,
+      null,
+      Date.now(),
+      getSrsDisplayMinutes()
+    );
+  }
+
+  function startLearning() {
+    if (!state.activePack || state.learningStatus === "active") return;
+    state.learningStatus = "active";
+    const card = getStartingCard();
+    if (card) renderCard(card, { autoPlay: true });
+    updateLearningSessionUi();
+    scheduleNextReminder();
+  }
+
+  function pauseLearning() {
+    if (state.learningStatus !== "active") return;
+    state.learningStatus = "paused";
+    stopAudio();
+    if (state.timerId) {
+      clearInterval(state.timerId);
+      state.timerId = null;
+    }
+    state.nextReminderTime = null;
+    updateLearningSessionUi();
+  }
+
+  function resumeLearning() {
+    if (state.learningStatus !== "paused" || !state.activePack) return;
+    state.learningStatus = "active";
+
+    const currentIsValid = state.currentCard &&
+      state.activePack.cards.some(card => card.id === state.currentCard.id);
+    if (currentIsValid) {
+      updateLearningSessionUi();
+      if (state.store.settings.readWords !== false ||
+          state.store.settings.readSentences !== false) {
+        void playCardSequence(state.currentCard);
+      }
+    } else {
+      const card = getStartingCard();
+      if (card) renderCard(card, { autoPlay: true });
+      updateLearningSessionUi();
+    }
+    scheduleNextReminder();
+  }
+
+  function setupLearningSessionControls() {
+    if (els.startLearningBtn) {
+      els.startLearningBtn.addEventListener("click", startLearning);
+    }
+    if (els.pauseLearningBtn) {
+      els.pauseLearningBtn.addEventListener("click", pauseLearning);
+    }
+    if (els.resumeLearningBtn) {
+      els.resumeLearningBtn.addEventListener("click", resumeLearning);
+    }
+    updateLearningSessionUi();
+  }
+
   function renderCard(card, { autoPlay = true } = {}) {
+    if (state.learningStatus !== "active" || !card) return;
     // Avoid double-cancelling speech right before a new reading starts.
     // playCardSequence() handles cancellation for spoken cards.
     const automaticReadingOff = state.store.settings.readWords === false &&
       state.store.settings.readSentences === false;
     if (!autoPlay || automaticReadingOff) stopAudio();
-    if (automaticReadingOff) hideAudioActivationNotice();
     state.currentCard = card;
     state.quizAnswered = false;
     state.selectedChoiceId = null;
@@ -979,7 +1010,7 @@
   }
 
   function presentNextCard({ autoPlay = true } = {}) {
-    if (!state.activePack) return;
+    if (!state.activePack || state.learningStatus !== "active") return;
     state.store.lastCardId = state.currentCard ? state.currentCard.id : null;
     const nextCard = chooseNextCard(
       state.activePack.cards,
@@ -1224,6 +1255,12 @@
       row.style.cursor = "pointer";
       row.addEventListener("click", () => {
         switchTab("study");
+        if (state.learningStatus !== "active") {
+          showToast(state.learningStatus === "paused"
+            ? "Resume learning before opening a study card."
+            : "Start learning before opening a study card.");
+          return;
+        }
         renderCard(card, { autoPlay: false });
       });
 
@@ -1294,6 +1331,15 @@
       state.timerId = null;
     }
 
+    if (state.learningStatus !== "active") {
+      state.nextReminderTime = null;
+      els.intervalTimerPill.classList.remove("active");
+      els.timerStatusText.textContent = state.learningStatus === "paused"
+        ? "Learning paused"
+        : "Learning not started";
+      return;
+    }
+
     if (!state.store.settings.reminderEnabled) {
       state.nextReminderTime = null;
       els.intervalTimerPill.classList.remove("active");
@@ -1314,7 +1360,7 @@
   }
 
   function triggerReminder() {
-    if (!state.activePack) return;
+    if (!state.activePack || state.learningStatus !== "active") return;
     presentNextCard({ autoPlay: true });
 
     // Play subtle audio cue / notification
@@ -1774,15 +1820,11 @@
     els.readWordToggle.checked = state.store.settings.readWords !== false;
     els.readWordToggle.addEventListener("change", (e) => {
       state.store.settings.readWords = e.target.checked;
-      if (state.store.settings.readWords === false &&
-          state.store.settings.readSentences === false) hideAudioActivationNotice();
       saveStoredState();
     });
     els.readSentenceToggle.checked = state.store.settings.readSentences !== false;
     els.readSentenceToggle.addEventListener("change", (e) => {
       state.store.settings.readSentences = e.target.checked;
-      if (state.store.settings.readWords === false &&
-          state.store.settings.readSentences === false) hideAudioActivationNotice();
       saveStoredState();
     });
 
@@ -1954,7 +1996,13 @@
       saveStoredState();
       updateDashboardCounts();
       renderDeckList();
-      presentNextCard({ autoPlay: false });
+      if (state.learningStatus === "active") {
+        presentNextCard({ autoPlay: false });
+      } else {
+        state.currentCard = null;
+        state.currentQuiz = null;
+        updateLearningSessionUi();
+      }
       closeResetModal();
       showToast("Progress has been reset.");
     });
@@ -1991,7 +2039,8 @@
   function setupKeyboardShortcuts() {
     window.addEventListener("keydown", (e) => {
       // Don't trigger shortcuts if user is typing in an input
-      if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing ||
+      if (state.learningStatus !== "active" ||
+          e.ctrlKey || e.metaKey || e.altKey || e.isComposing ||
           ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement?.tagName) ||
           document.activeElement?.isContentEditable ||
           ![...els.tabButtons].some(btn => btn.dataset.tab === "study" && btn.classList.contains("active")) ||
@@ -2048,7 +2097,7 @@
     // Populate the selected device voice after restoring those preferences.
     loadVoices();
     initTheme();
-    setupAudioActivation();
+    setupLearningSessionControls();
     setupActionButtons();
     setupDeckBrowser();
     setupTranslateSection();
@@ -2080,31 +2129,27 @@
         if (nextPack) {
           state.activePack = nextPack;
           state.store.settings.activePackId = nextPack.id;
+          state.currentCard = null;
+          state.currentQuiz = null;
+          state.store.currentCardId = null;
           saveStoredState();
           updateDashboardCounts();
           renderDeckList();
-          presentNextCard({ autoPlay: false });
+          if (state.learningStatus === "active") {
+            presentNextCard({ autoPlay: false });
+          } else {
+            updateLearningSessionUi();
+          }
         }
       });
 
-      // Show initial card
-      let initialCard = null;
-      if (state.store.currentCardId) {
-        initialCard = state.activePack.cards.find(c => c.id === state.store.currentCardId);
-      }
-      if (!initialCard) {
-        initialCard = chooseNextCard(
-          state.activePack.cards,
-          state.store.progress,
-          null,
-          Date.now(),
-          getSrsDisplayMinutes()
-        );
-      }
-
-      // Prompt for a single sound-enabling gesture when required, rather
-      // than repeatedly timing out on every silent automatic reminder.
-      renderCard(initialCard, { autoPlay: true });
+      // Every page visit begins intentionally idle. Starting is a user gesture,
+      // which also gives browsers the interaction needed for pronunciation.
+      state.learningStatus = "idle";
+      state.currentCard = null;
+      state.currentQuiz = null;
+      if (els.startLearningBtn) els.startLearningBtn.disabled = false;
+      updateLearningSessionUi();
       updateDashboardCounts();
       renderDeckList();
       scheduleNextReminder();
