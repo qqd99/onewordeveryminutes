@@ -123,3 +123,14 @@ Every page visit begins with **no study card visible**. Press **Start learning**
 Use **Pause learning** at any time to stop the current audio, stop the reminder timer, and hide the study card. While paused, reminder events cannot advance or display another card. **Resume learning** restores the same in-progress card, restarts pronunciation according to the Read word / Read sentence settings, and starts a fresh reminder countdown. Refreshing or reopening the page returns to the Start learning screen rather than silently resuming a session.
 
 Session start/pause state is intentionally temporary and is not written into exported SRS progress. Vocabulary progress and the current-card ID are still persisted normally. The v13 build is kept identical in both `web/` and `docs/` so either GitHub Pages publishing path serves the same interface.
+
+## Two quiz directions (v14)
+
+The web app now has a persistent **Learning Mode** selector in Settings.
+
+- **Mode 1 — Chinese → English (default):** the current Chinese word is shown and the learner chooses from three English meanings. This is the existing behavior and remains the default for current and new users.
+- **Mode 2 — English → Chinese:** the English meaning is shown and the learner chooses from three Chinese words. Automatic and manual word audio still pronounce the underlying Chinese card, so a prompt such as **good** is still spoken as **好 / hǎo** rather than as the English word.
+
+Mode 2 hides the pinyin and Chinese example sentence until the learner answers, so the page does not visually reveal the correct Chinese choice in advance. After answering, the full Chinese word, pinyin, English meaning, and example sentence are revealed. Distractor choices retain their vocabulary-card IDs, so the reviewed-distractor Forget behavior works in both quiz modes. Cards with the exact same English meaning are not used as distractors for an English prompt, avoiding two simultaneously valid Chinese answers.
+
+Changing the learning mode while a card is already open applies to the next card. The selected mode is stored in browser settings, included in web backups, and validated when imported. The v14 PWA cache is published identically through both `web/` and `docs/`.
