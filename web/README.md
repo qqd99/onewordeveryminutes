@@ -142,3 +142,11 @@ Mode 2 no longer allows answer length to reveal the correct Chinese word. The co
 The current HSK-1000 catalog has enough alternatives for all 1-, 2-, and 3-character cards. The single 4-character card, **公共汽车**, is skipped in Mode 2 because the catalog does not contain two other 4-character vocabulary cards; it remains available in Mode 1. This preserves the three-choice format without introducing fake words or obvious length clues. Deck clicks also reject Mode 2 cards that cannot form three same-length choices.
 
 The v15 regression suite checks the full deployed vocabulary catalog so every eligible Mode 2 card produces exactly three choices of identical character length. The update is mirrored through both `web/` and `docs/`.
+
+## Quiet quiz feedback (v16)
+
+Study cards no longer create the dark in-page toast popups after a quiz answer. Correct/incorrect feedback stays inside the card through the green/red answer styling and the revealed answer, while SRS Remember/Forget updates continue normally.
+
+Reminder-driven card changes also no longer display the in-page **Reminder: Next card is due!** toast. If desktop/browser notifications are enabled in Settings, the optional system notification remains available. Other operational toasts (for settings, imports, errors, and manual actions) are unchanged.
+
+The v16 PWA cache is mirrored through both `web/` and `docs/`.
