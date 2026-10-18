@@ -92,7 +92,7 @@ test("wrong answer forgets both the displayed word and a previously remembered d
   assert.equal(h.state.store.progress.cuo.forgotten, 1);
   assert.equal(h.state.store.progress.cuo.lapses, 1);
   assert.equal(h.state.store.progress.zuo.forgotten, undefined);
-  assert.match(h.toasts[0], /好 and 错 marked Forget/);
+  assert.equal(h.toasts.length, 0);
 });
 
 test("a distractor already in Forget category is forgotten again when chosen", () => {
@@ -118,7 +118,7 @@ test("correct answer remembers only the displayed word", () => {
   h.choose("good");
   assert.equal(h.state.store.progress.hao.remembered, 3);
   assert.equal(h.state.store.progress.cuo, previous);
-  assert.equal(h.toasts[0], "Correct! SRS interval increased.");
+  assert.equal(h.toasts.length, 0);
 });
 
 test("only the selected wrong meaning is forgotten, not the other option", () => {
@@ -144,7 +144,7 @@ test("double clicking a wrong choice cannot rate either card twice", () => {
   assert.equal(h.state.store.progress.cuo, prevCuo);
   assert.equal(prevHao.forgotten, 1);
   assert.equal(prevCuo.forgotten, 1);
-  assert.equal(h.toasts.length, 1);
+  assert.equal(h.toasts.length, 0);
 });
 
 test("a later manual rating corrects the shown word without undoing distractor Forget", () => {
