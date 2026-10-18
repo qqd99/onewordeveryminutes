@@ -674,9 +674,14 @@
     return { choices, correctMeaning };
   }
 
+  function chineseCharacterCount(value) {
+    return Array.from(String(value || "").trim()).length;
+  }
+
   function buildChineseQuiz(vocabulary, card, progress = {}) {
     const correctMeaning = String(card.meaning || "").trim();
     const correctWord = String(card.front || "").trim();
+    const correctLength = chineseCharacterCount(correctWord);
     const distractorsByWord = new Map();
 
     // Cards with the exact same English meaning are excluded because they can
@@ -685,6 +690,7 @@
       const word = String(item.front || "").trim();
       const meaning = String(item.meaning || "").trim();
       return item.id !== card.id && word && word !== correctWord &&
+        chineseCharacterCount(word) === correctLength &&
         meaning && meaning !== correctMeaning;
     });
     const shuffled = [...candidates];
@@ -718,11 +724,34 @@
       [choices[i], choices[j]] = [choices[j], choices[i]];
     }
 
-    return { choices, correctMeaning, correctWord };
+    return { choices, correctMeaning, correctWord, correctLength };
   }
 
   function isEnglishToChineseMode() {
     return state.store?.settings?.learningMode === "english-to-chinese";
+  }
+
+  function getModeEligibleVocabulary(vocabulary) {
+    const cards = Array.isArray(vocabulary) ? vocabulary : [];
+    if (!isEnglishToChineseMode()) return cards;
+
+    // Mode 2 must never reveal the answer by word length. Only present cards
+    // whose length bucket contains at least three Chinese words, so the
+    // correct answer and both distractors can all have the same length.
+    const countsByLength = new Map();
+    for (const card of cards) {
+      const length = chineseCharacterCount(card.front);
+      if (length > 0) countsByLength.set(length, (countsByLength.get(length) || 0) + 1);
+    }
+    return cards.filter(card =>
+      (countsByLength.get(chineseCharacterCount(card.front)) || 0) >= 3
+    );
+  }
+
+  function isModeEligibleCard(card, vocabulary = state.activePack?.cards || []) {
+    if (!card || !isEnglishToChineseMode()) return Boolean(card);
+    const targetId = card.id;
+    return getModeEligibleVocabulary(vocabulary).some(item => item.id === targetId);
   }
 
   /* -------------------------------------------------------------
@@ -804,10 +833,12 @@
 
   function getStartingCard() {
     if (!state.activePack) return null;
+    const studyCards = getModeEligibleVocabulary(state.activePack.cards);
+    if (!studyCards.length) return null;
     const savedId = state.store.currentCardId;
-    const saved = savedId ? state.activePack.cards.find(card => card.id === savedId) : null;
+    const saved = savedId ? studyCards.find(card => card.id === savedId) : null;
     return saved || chooseNextCard(
-      state.activePack.cards,
+      studyCards,
       state.store.progress,
       null,
       Date.now(),
@@ -1084,8 +1115,13 @@
   function presentNextCard({ autoPlay = true } = {}) {
     if (!state.activePack || state.learningStatus !== "active") return;
     state.store.lastCardId = state.currentCard ? state.currentCard.id : null;
+    const studyCards = getModeEligibleVocabulary(state.activePack.cards);
+    if (!studyCards.length) {
+      showToast("No cards can provide three same-length Chinese choices in this mode.");
+      return;
+    }
     const nextCard = chooseNextCard(
-      state.activePack.cards,
+      studyCards,
       state.store.progress,
       state.store.lastCardId,
       Date.now(),
@@ -1331,6 +1367,10 @@
           showToast(state.learningStatus === "paused"
             ? "Resume learning before opening a study card."
             : "Start learning before opening a study card.");
+          return;
+        }
+        if (!isModeEligibleCard(card)) {
+          showToast("Mode 2 needs two other Chinese answers with the same character count.");
           return;
         }
         renderCard(card, { autoPlay: false });
