@@ -903,6 +903,7 @@
     // card.front / card.speechText, so Mode 2 still says the Chinese word.
     const englishToChinese = isEnglishToChineseMode();
     els.hanziTerm.textContent = englishToChinese ? (card.meaning || "—") : card.front;
+    els.hanziTerm.classList.toggle("english-prompt", englishToChinese);
     els.pinyinReading.hidden = englishToChinese;
     els.pinyinReading.textContent = englishToChinese ? "" : (card.reading || "—");
 
@@ -918,7 +919,7 @@
 
     state.currentQuiz.choices.forEach((choice, index) => {
       const btn = document.createElement("button");
-      btn.className = "choice-btn";
+      btn.className = englishToChinese ? "choice-btn choice-btn-chinese" : "choice-btn";
       btn.type = "button";
       btn.dataset.choiceId = choice.id;
 
