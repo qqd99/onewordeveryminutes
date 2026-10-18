@@ -134,3 +134,11 @@ The web app now has a persistent **Learning Mode** selector in Settings.
 Mode 2 hides the pinyin and Chinese example sentence until the learner answers, so the page does not visually reveal the correct Chinese choice in advance. After answering, the full Chinese word, pinyin, English meaning, and example sentence are revealed. Distractor choices retain their vocabulary-card IDs, so the reviewed-distractor Forget behavior works in both quiz modes. Cards with the exact same English meaning are not used as distractors for an English prompt, avoiding two simultaneously valid Chinese answers.
 
 Changing the learning mode while a card is already open applies to the next card. The selected mode is stored in browser settings, included in web backups, and validated when imported. The v14 PWA cache is published identically through both `web/` and `docs/`.
+
+## Equal-length Chinese choices in Mode 2 (v15)
+
+Mode 2 no longer allows answer length to reveal the correct Chinese word. The correct answer and both distractors always have the **same Chinese character count**. A one-character answer is paired only with one-character distractors, a two-character answer only with two-character distractors, and so on.
+
+The current HSK-1000 catalog has enough alternatives for all 1-, 2-, and 3-character cards. The single 4-character card, **公共汽车**, is skipped in Mode 2 because the catalog does not contain two other 4-character vocabulary cards; it remains available in Mode 1. This preserves the three-choice format without introducing fake words or obvious length clues. Deck clicks also reject Mode 2 cards that cannot form three same-length choices.
+
+The v15 regression suite checks the full deployed vocabulary catalog so every eligible Mode 2 card produces exactly three choices of identical character length. The update is mirrored through both `web/` and `docs/`.
