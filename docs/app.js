@@ -722,7 +722,7 @@
   }
 
   function isEnglishToChineseMode() {
-    return state.store.settings.learningMode === "english-to-chinese";
+    return state.store?.settings?.learningMode === "english-to-chinese";
   }
 
   /* -------------------------------------------------------------
