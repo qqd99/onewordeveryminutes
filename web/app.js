@@ -1102,14 +1102,10 @@
     // Apply one rating per presentation. Manual Remember/Forget buttons can
     // correct it without counting an additional review of the same card.
     rateCurrentCard(choice.isCorrect ? "remember" : "forget");
-    const confusedCard = choice.isCorrect ? null : forgetConfusedDistractor(choice);
-    showToast(choice.isCorrect
-      ? "Correct! SRS interval increased."
-      : confusedCard
-        ? `Incorrect. ${state.currentCard.front} and ${confusedCard.front} marked Forget.`
-        : "Incorrect. Current word marked Forget.");
+    if (!choice.isCorrect) forgetConfusedDistractor(choice);
 
-    // Do not restart audio on answer: the word may still be playing.
+    // Result feedback stays inside the card (green/red choice + revealed answer).
+    // Do not show a toast after answering, and do not restart audio.
   }
 
   function presentNextCard({ autoPlay = true } = {}) {
@@ -1486,7 +1482,7 @@
         console.warn("Notification error:", err);
       }
     }
-    showToast("⏰ Reminder: Next card is due!");
+    // The new card itself is the reminder; avoid stacking an in-page toast over study.
     scheduleNextReminder();
   }
 
