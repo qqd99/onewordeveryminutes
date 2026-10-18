@@ -27,6 +27,7 @@
         intervalMinutes: 15,
         intervalSeconds: 0,
         reminderEnabled: false,
+        learningMode: "chinese-to-english",
         volume: 100,
         speed: 0.85,
         readWords: true,
@@ -132,6 +133,7 @@
 
     // Settings View
     reminderEnabled: $("#reminderEnabled"),
+    learningModeSelect: $("#learningModeSelect"),
     intervalHoursInput: $("#intervalHoursInput"),
     intervalMinutesInput: $("#intervalMinutesInput"),
     intervalSecondsInput: $("#intervalSecondsInput"),
@@ -183,6 +185,9 @@
         delete state.store.settings.autoSpeak;
         if (state.store.settings.intervalHours === undefined) state.store.settings.intervalHours = 0;
         if (state.store.settings.intervalSeconds === undefined) state.store.settings.intervalSeconds = 0;
+        if (!["chinese-to-english", "english-to-chinese"].includes(state.store.settings.learningMode)) {
+          state.store.settings.learningMode = "chinese-to-english";
+        }
       }
     } catch (err) {
       console.warn("Could not read local storage state:", err);
@@ -669,6 +674,57 @@
     return { choices, correctMeaning };
   }
 
+  function buildChineseQuiz(vocabulary, card, progress = {}) {
+    const correctMeaning = String(card.meaning || "").trim();
+    const correctWord = String(card.front || "").trim();
+    const distractorsByWord = new Map();
+
+    // Cards with the exact same English meaning are excluded because they can
+    // be valid answers to an English prompt too.
+    const candidates = vocabulary.filter(item => {
+      const word = String(item.front || "").trim();
+      const meaning = String(item.meaning || "").trim();
+      return item.id !== card.id && word && word !== correctWord &&
+        meaning && meaning !== correctMeaning;
+    });
+    const shuffled = [...candidates];
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    for (const item of shuffled) {
+      const text = String(item.front).trim();
+      const previous = distractorsByWord.get(text);
+      if (!previous && distractorsByWord.size < 2) {
+        distractorsByWord.set(text, item);
+      } else if (previous && !wasEverReviewed(progress[previous.id]) &&
+                 wasEverReviewed(progress[item.id])) {
+        distractorsByWord.set(text, item);
+      }
+    }
+
+    const choices = [
+      { id: "correct", cardId: card.id, text: correctWord, isCorrect: true },
+      ...Array.from(distractorsByWord.entries()).map(([text, item], index) => ({
+        id: `distractor-${index}`,
+        cardId: item.id,
+        text,
+        isCorrect: false
+      }))
+    ];
+    for (let i = choices.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [choices[i], choices[j]] = [choices[j], choices[i]];
+    }
+
+    return { choices, correctMeaning, correctWord };
+  }
+
+  function isEnglishToChineseMode() {
+    return state.store?.settings?.learningMode === "english-to-chinese";
+  }
+
   /* -------------------------------------------------------------
      6. UI PRESENTATION & CARD RENDERING
   ------------------------------------------------------------- */
@@ -843,19 +899,27 @@
       els.stageBadge.className = "stage-badge mastered";
     }
 
-    // Term & Pinyin
-    els.hanziTerm.textContent = card.front;
-    els.pinyinReading.textContent = card.reading || "—";
+    // Learning direction changes only the visual quiz. Speech always uses
+    // card.front / card.speechText, so Mode 2 still says the Chinese word.
+    const englishToChinese = isEnglishToChineseMode();
+    els.hanziTerm.textContent = englishToChinese ? (card.meaning || "—") : card.front;
+    els.hanziTerm.classList.toggle("english-prompt", englishToChinese);
+    els.pinyinReading.hidden = englishToChinese;
+    els.pinyinReading.textContent = englishToChinese ? "" : (card.reading || "—");
 
     // Quiz Section
-    state.currentQuiz = buildMeaningQuiz(state.activePack.cards, card, state.store.progress);
+    state.currentQuiz = englishToChinese
+      ? buildChineseQuiz(state.activePack.cards, card, state.store.progress)
+      : buildMeaningQuiz(state.activePack.cards, card, state.store.progress);
     els.choicesGrid.innerHTML = "";
     els.revealedMeaning.hidden = true;
-    els.quizPrompt.textContent = "Choose the correct meaning:";
+    els.quizPrompt.textContent = englishToChinese
+      ? "Choose the correct Chinese word:"
+      : "Choose the correct meaning:";
 
     state.currentQuiz.choices.forEach((choice, index) => {
       const btn = document.createElement("button");
-      btn.className = "choice-btn";
+      btn.className = englishToChinese ? "choice-btn choice-btn-chinese" : "choice-btn";
       btn.type = "button";
       btn.dataset.choiceId = choice.id;
 
@@ -875,7 +939,7 @@
 
     // Example Card & Word Breakdown
     if (card.example && card.example.text) {
-      els.exampleCard.hidden = false;
+      els.exampleCard.hidden = englishToChinese;
       els.exampleHanzi.textContent = card.example.text;
       els.examplePinyin.textContent = card.example.reading || "";
       els.exampleEnglish.textContent = card.example.meaning || "";
@@ -992,8 +1056,16 @@
       }
     });
 
-    // Show revealed meaning
-    els.revealedMeaning.textContent = `Meaning: ${state.currentQuiz.correctMeaning}`;
+    // Reveal the full pair after answering. In Mode 2 the example is hidden
+    // before the answer so its Chinese text cannot give the answer away.
+    if (isEnglishToChineseMode()) {
+      const reading = state.currentCard.reading ? ` · ${state.currentCard.reading}` : "";
+      els.revealedMeaning.textContent =
+        `Answer: ${state.currentCard.front}${reading} — ${state.currentCard.meaning}`;
+      if (state.currentCard.example?.text) els.exampleCard.hidden = false;
+    } else {
+      els.revealedMeaning.textContent = `Meaning: ${state.currentQuiz.correctMeaning}`;
+    }
     els.revealedMeaning.hidden = false;
 
     // Apply one rating per presentation. Manual Remember/Forget buttons can
@@ -1685,6 +1757,21 @@
      10. SETTINGS & DATA EXPORT / IMPORT
   ------------------------------------------------------------- */
   function setupSettings() {
+    // Learning mode
+    if (els.learningModeSelect) {
+      els.learningModeSelect.value = state.store.settings.learningMode || "chinese-to-english";
+      els.learningModeSelect.addEventListener("change", (e) => {
+        const nextMode = e.target.value === "english-to-chinese"
+          ? "english-to-chinese"
+          : "chinese-to-english";
+        state.store.settings.learningMode = nextMode;
+        saveStoredState();
+        showToast(nextMode === "english-to-chinese"
+          ? "Mode 2 selected: English → Chinese. Applies to the next card."
+          : "Mode 1 selected: Chinese → English. Applies to the next card.");
+      });
+    }
+
     // Reminder switch
     els.reminderEnabled.checked = state.store.settings.reminderEnabled;
     els.reminderEnabled.addEventListener("change", (e) => {
@@ -1917,6 +2004,9 @@
           if (typeof importedSettings.readSentences === "boolean") {
             state.store.settings.readSentences = importedSettings.readSentences;
           }
+          if (["chinese-to-english", "english-to-chinese"].includes(importedSettings.learningMode)) {
+            state.store.settings.learningMode = importedSettings.learningMode;
+          }
           if (["auto", "online", "speechSynthesis"].includes(importedSettings.audioEngine)) {
             state.store.settings.audioEngine = importedSettings.audioEngine;
           }
@@ -1934,6 +2024,9 @@
           }
           els.readWordToggle.checked = state.store.settings.readWords !== false;
           els.readSentenceToggle.checked = state.store.settings.readSentences !== false;
+          if (els.learningModeSelect) {
+            els.learningModeSelect.value = state.store.settings.learningMode || "chinese-to-english";
+          }
           els.audioEngineSelect.value = state.store.settings.audioEngine || "auto";
           els.volumeRange.value = state.store.settings.volume;
           els.volumeLabel.textContent = `${state.store.settings.volume}%`;
