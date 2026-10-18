@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=13" />
+  <link rel="stylesheet" href="style.css?v=14" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -313,6 +313,22 @@
     <section id="settingsView" class="tab-view">
       <div class="settings-panel">
         <div class="settings-group">
+          <h2 class="settings-group-title">Learning Mode</h2>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="learningModeSelect">Quiz direction</label>
+              <p>Mode 1 is the current Chinese → English quiz. Mode 2 shows English and asks you to choose the Chinese word. Audio remains Chinese in both modes.</p>
+            </div>
+            <div class="setting-control">
+              <select id="learningModeSelect" class="pack-select">
+                <option value="chinese-to-english">Mode 1 — Chinese → English (default)</option>
+                <option value="english-to-chinese">Mode 2 — English → Chinese</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
           <h2 class="settings-group-title">Study Cadence & Reminders</h2>
           <div class="setting-row">
             <div class="setting-info">
@@ -497,7 +513,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Load Scripts -->
-  <script src="srs.js?v=13"></script>
-  <script src="app.js?v=13"></script>
+  <script src="srs.js?v=14"></script>
+  <script src="app.js?v=14"></script>
 </body>
 </html>
