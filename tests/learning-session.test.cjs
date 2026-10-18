@@ -82,6 +82,7 @@ function makeHarness() {
     els,
     Date,
     chooseNextCard: () => otherCard,
+    getModeEligibleVocabulary: cards => cards,
     getSrsDisplayMinutes: () => 15,
     renderCard(card, options) {
       calls.render.push({ card, options });

@@ -31,10 +31,10 @@ function quizHarness(progress = {}) {
   };
   vm.runInNewContext(
     quizCode +
-    "\nglobalThis.api = { buildMeaningQuiz, buildChineseQuiz, isEnglishToChineseMode };",
+    "\nglobalThis.api = { buildMeaningQuiz, buildChineseQuiz, isEnglishToChineseMode, chineseCharacterCount, getModeEligibleVocabulary, isModeEligibleCard };",
     context
   );
-  return context.api;
+  return { api: context.api, context };
 }
 
 const hao = { id: "hao", front: "好", reading: "hǎo", meaning: "good", speechText: "好" };
@@ -49,7 +49,7 @@ test("Mode 1 remains the default Chinese-to-English mode", () => {
 });
 
 test("Mode 2 builds one correct Chinese answer and two Chinese distractors", () => {
-  const api = quizHarness();
+  const { api } = quizHarness();
   const quiz = api.buildChineseQuiz([hao, cuo, zuo], hao, {});
   assert.equal(quiz.correctMeaning, "good");
   assert.equal(quiz.correctWord, "好");
@@ -63,15 +63,69 @@ test("Mode 2 builds one correct Chinese answer and two Chinese distractors", () 
   );
 });
 
+
+test("Mode 2 distractors always match the correct Chinese word length", () => {
+  const { api } = quizHarness();
+  const longWrong = { id: "wrong-2", front: "错误", meaning: "error" };
+  const longMake = { id: "make-2", front: "制作", meaning: "produce" };
+  const quiz = api.buildChineseQuiz([hao, cuo, zuo, longWrong, longMake], hao, {});
+  assert.equal(quiz.choices.length, 3);
+  assert.ok(quiz.choices.every(choice => Array.from(choice.text).length === 1));
+  assert.equal(quiz.choices.some(choice => choice.text === "错误"), false);
+  assert.equal(quiz.choices.some(choice => choice.text === "制作"), false);
+});
+
+test("two-character Mode 2 cards get only two-character answer choices", () => {
+  const { api } = quizHarness();
+  const target = { id: "very-good", front: "很好", meaning: "very good" };
+  const wrongA = { id: "error-2", front: "错误", meaning: "error" };
+  const wrongB = { id: "make-2", front: "制作", meaning: "produce" };
+  const oneChar = { id: "one-char", front: "错", meaning: "mistake" };
+  const quiz = api.buildChineseQuiz([target, wrongA, wrongB, oneChar], target, {});
+  assert.equal(quiz.choices.length, 3);
+  assert.deepEqual(
+    new Set(quiz.choices.map(choice => Array.from(choice.text).length)),
+    new Set([2])
+  );
+});
+
+test("Mode 2 study pool excludes word lengths that cannot provide three equal-length choices", () => {
+  const { api, context } = quizHarness();
+  context.state.store.settings.learningMode = "english-to-chinese";
+  const four = { id: "bus", front: "公共汽车", meaning: "bus" };
+  const pool = api.getModeEligibleVocabulary([hao, cuo, zuo, four]);
+  assert.deepEqual(new Set(pool.map(card => card.id)), new Set(["hao", "cuo", "zuo"]));
+  assert.equal(api.isModeEligibleCard(four, [hao, cuo, zuo, four]), false);
+  assert.equal(api.isModeEligibleCard(hao, [hao, cuo, zuo, four]), true);
+});
+
+test("real Mode 2 vocabulary has no answer-length leak for any eligible card", () => {
+  const catalog = JSON.parse(fs.readFileSync(path.join(root, "web/vocabulary.json"), "utf8"));
+  const cards = catalog.packs[0].cards;
+  const { api, context } = quizHarness();
+  context.state.store.settings.learningMode = "english-to-chinese";
+  const eligible = api.getModeEligibleVocabulary(cards);
+  assert.ok(eligible.length > 0);
+  for (const card of eligible) {
+    const quiz = api.buildChineseQuiz(cards, card, {});
+    assert.equal(quiz.choices.length, 3, card.front + " must have three choices");
+    const correctLength = Array.from(card.front).length;
+    assert.ok(
+      quiz.choices.every(choice => Array.from(choice.text).length === correctLength),
+      card.front + " leaked its answer by character count"
+    );
+  }
+});
+
 test("Mode 2 excludes another Chinese card with the same English meaning", () => {
-  const api = quizHarness();
+  const { api } = quizHarness();
   const quiz = api.buildChineseQuiz([hao, tongyi, cuo, zuo], hao, {});
   assert.equal(quiz.choices.some(choice => choice.cardId === "hao-2"), false);
   assert.equal(quiz.choices.some(choice => choice.text === "良"), false);
 });
 
 test("Mode 2 choices retain source IDs for wrong-answer Forget logic", () => {
-  const api = quizHarness();
+  const { api } = quizHarness();
   const quiz = api.buildChineseQuiz([hao, cuo, zuo], hao, {});
   for (const choice of quiz.choices) {
     assert.ok(["hao", "cuo", "zuo"].includes(choice.cardId));
