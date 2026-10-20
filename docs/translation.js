@@ -162,7 +162,7 @@
     return {
       card: {
         ...card,
-        meaning: correctOption?.text || localizedMeaning,
+        meaning: choices.length && !distinct ? card.meaning : (correctOption?.text || localizedMeaning),
         example: card.example ? { ...card.example, meaning: localizedExample } : card.example
       },
       quiz: displayedQuiz
