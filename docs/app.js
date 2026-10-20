@@ -29,6 +29,7 @@
         intervalSeconds: 0,
         reminderEnabled: false,
         learningMode: "chinese-to-english",
+        translationLanguage: "en",
         volume: 100,
         speed: 0.85,
         readWords: true,
@@ -126,6 +127,7 @@
     translateStatusIndicator: $("#translateStatusIndicator"),
     speakInputBtn: $("#speakInputBtn"),
     translateBtn: $("#translateBtn"),
+    translateTargetSelect: $("#translateTargetSelect"),
     translateResult: $("#translateResult"),
     resultChinese: $("#resultChinese"),
     resultPinyin: $("#resultPinyin"),
@@ -139,6 +141,7 @@
     // Settings View
     reminderEnabled: $("#reminderEnabled"),
     learningModeSelect: $("#learningModeSelect"),
+    meaningLanguageSelect: $("#meaningLanguageSelect"),
     intervalHoursInput: $("#intervalHoursInput"),
     intervalMinutesInput: $("#intervalMinutesInput"),
     intervalSecondsInput: $("#intervalSecondsInput"),
@@ -201,6 +204,7 @@
     if (!["chinese-to-english", "english-to-chinese"].includes(normalized.settings.learningMode)) {
       normalized.settings.learningMode = "chinese-to-english";
     }
+    normalized.settings.translationLanguage = TranslationSupport.normalizeLanguage(normalized.settings.translationLanguage);
     return normalized;
   }
 
@@ -327,6 +331,8 @@
     document.documentElement.setAttribute("data-theme", settings.theme || "light");
     els.themeToggle.textContent = settings.theme === "dark" ? "☀️" : "🌙";
     if (els.learningModeSelect) els.learningModeSelect.value = settings.learningMode;
+    if (els.meaningLanguageSelect) els.meaningLanguageSelect.value = settings.translationLanguage || "en";
+    if (els.translateTargetSelect) els.translateTargetSelect.value = settings.translationLanguage || "en";
     if (els.reminderEnabled) els.reminderEnabled.checked = Boolean(settings.reminderEnabled);
     if (els.intervalHoursInput) els.intervalHoursInput.value = settings.intervalHours ?? 0;
     if (els.intervalMinutesInput) els.intervalMinutesInput.value = settings.intervalMinutes ?? 15;
@@ -1226,6 +1232,47 @@
     updateLearningSessionUi();
   }
 
+  // Only presentation text is translated; source cards and quiz IDs are immutable.
+  let visibleTranslationGeneration = 0;
+  async function localizeRenderedCard(card, quiz, englishToChinese) {
+    const generation = ++visibleTranslationGeneration;
+    const target = TranslationSupport.normalizeLanguage(state.store.settings.translationLanguage);
+    if (!card || !quiz) return;
+
+    if (englishToChinese) els.hanziTerm.textContent = card.meaning || "—";
+    else for (const choice of quiz.choices) {
+      const button = [...els.choicesGrid.querySelectorAll(".choice-btn")]
+        .find(element => element.dataset.choiceId === choice.id);
+      if (button?.firstElementChild) button.firstElementChild.textContent = choice.text;
+    }
+    els.exampleEnglish.textContent = card.example?.meaning || "";
+    if (state.quizAnswered) {
+      const reading = card.reading ? ` · ${card.reading}` : "";
+      els.revealedMeaning.textContent = englishToChinese
+        ? `Answer: ${card.front}${reading} — ${card.meaning}`
+        : `Meaning: ${quiz.correctMeaning}`;
+    }
+    if (target === "en") return;
+
+    const localized = await TranslationSupport.localizePresentation(card, quiz, target, "en", !englishToChinese);
+    if (generation !== visibleTranslationGeneration || state.currentCard !== card ||
+        state.currentQuiz !== quiz || state.store.settings.translationLanguage !== target) return;
+
+    if (englishToChinese) els.hanziTerm.textContent = localized.card.meaning;
+    else for (const choice of localized.quiz.choices) {
+      const button = [...els.choicesGrid.querySelectorAll(".choice-btn")]
+        .find(element => element.dataset.choiceId === choice.id);
+      if (button?.firstElementChild) button.firstElementChild.textContent = choice.text;
+    }
+    els.exampleEnglish.textContent = localized.card.example?.meaning || "";
+    if (state.quizAnswered) {
+      const reading = card.reading ? ` · ${card.reading}` : "";
+      els.revealedMeaning.textContent = englishToChinese
+        ? `Answer: ${card.front}${reading} — ${localized.card.meaning}`
+        : `Meaning: ${localized.card.meaning}`;
+    }
+  }
+
   function renderCard(card, { autoPlay = true } = {}) {
     if (state.learningStatus !== "active" || !card) return;
     // Avoid double-cancelling speech right before a new reading starts.
@@ -1309,7 +1356,7 @@
         words.forEach(item => {
           const a = document.createElement("a");
           a.className = "word-chip";
-          a.href = `https://translate.google.com/?sl=zh-TW&tl=en&text=${encodeURIComponent(item.word)}&op=translate`;
+          a.href = `https://translate.google.com/?sl=zh-TW&tl=${encodeURIComponent(state.store.settings.translationLanguage || "en")}&text=${encodeURIComponent(item.word)}&op=translate`;
           a.target = "_blank";
           a.rel = "noopener noreferrer";
           a.title = `Translate "${item.word}" with Google Translate`;
@@ -1359,6 +1406,7 @@
       playCardSequence(card);
     }
     updateDashboardCounts();
+    void localizeRenderedCard(card, state.currentQuiz, englishToChinese);
   }
 
   function rateCurrentCard(rating) {
@@ -1820,14 +1868,15 @@
   let translateDebounceTimer = null;
   let translationGeneration = 0;
 
-  async function fetchGoogleTranslate(text) {
+  async function fetchGoogleTranslate(text, target = "en") {
     const trimmed = text.trim();
     if (!trimmed) return null;
-    if (translationCache.has(trimmed)) {
-      return translationCache.get(trimmed);
+    const cacheKey = `${target}|${trimmed}`;
+    if (translationCache.has(cacheKey)) {
+      return translationCache.get(cacheKey);
     }
 
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=en&dt=t&dt=rm&dt=bd&q=${encodeURIComponent(trimmed)}`;
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=${encodeURIComponent(target)}&dt=t&dt=rm&dt=bd&q=${encodeURIComponent(trimmed)}`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
     let response;
@@ -1858,7 +1907,7 @@
     }
 
     const result = { translation, pinyin };
-    translationCache.set(trimmed, result);
+    translationCache.set(cacheKey, result);
     return result;
   }
 
@@ -1881,6 +1930,7 @@
 
   async function executeTranslation() {
     const requestId = ++translationGeneration;
+    const target = TranslationSupport.normalizeLanguage(state.store.settings.translationLanguage);
     const text = els.translateInput.value.trim();
     if (!text) {
       els.translateResult.hidden = true;
@@ -1894,7 +1944,7 @@
     try {
       let fullTrans = { translation: "", pinyin: "" };
       try {
-        fullTrans = await fetchGoogleTranslate(text);
+        fullTrans = await fetchGoogleTranslate(text, target);
       } catch (err) {
         console.warn("Google translate API error:", err);
         fullTrans = { translation: "(Offline / Translation unavailable)", pinyin: "" };
@@ -1922,7 +1972,7 @@
             return {
               word: w,
               pinyin: card.reading || "",
-              meaning: card.meaning || "",
+              meaning: await TranslationSupport.translateText(card.meaning || "", target, "en"),
               isHsk: true
             };
           }
@@ -1931,15 +1981,15 @@
             return {
               word: w,
               pinyin: commonWords[w].reading,
-              meaning: commonWords[w].meaning,
+              meaning: await TranslationSupport.translateText(commonWords[w].meaning, target, "en"),
               isHsk: false
             };
           }
 
-          let trans = translationCache.get(w);
+          let trans = translationCache.get(`${target}|${w}`);
           if (!trans) {
             try {
-              trans = await fetchGoogleTranslate(w);
+              trans = await fetchGoogleTranslate(w, target);
             } catch (e) {
               trans = { translation: "", pinyin: "" };
             }
@@ -1967,7 +2017,7 @@
         wordDetails.forEach(item => {
           const a = document.createElement("a");
           a.className = "breakdown-word-card";
-          a.href = `https://translate.google.com/?sl=zh-TW&tl=en&text=${encodeURIComponent(item.word)}&op=translate`;
+          a.href = `https://translate.google.com/?sl=zh-TW&tl=${encodeURIComponent(state.store.settings.translationLanguage || "en")}&text=${encodeURIComponent(item.word)}&op=translate`;
           a.target = "_blank";
           a.rel = "noopener noreferrer";
           a.title = `Look up "${item.word}" on Google Translate`;
@@ -2038,6 +2088,18 @@
   }
 
   function setupTranslateSection() {
+    if (els.translateTargetSelect) {
+      els.translateTargetSelect.addEventListener("change", event => {
+        const target = TranslationSupport.normalizeLanguage(event.target.value);
+        state.store.settings.translationLanguage = target;
+        if (els.meaningLanguageSelect) els.meaningLanguageSelect.value = target;
+        saveStoredState();
+        if (state.currentCard && state.currentQuiz) {
+          void localizeRenderedCard(state.currentCard, state.currentQuiz, isEnglishToChineseMode());
+        }
+        if (els.translateInput.value.trim()) executeTranslation();
+      });
+    }
     function updateCharCount() {
       const len = els.translateInput.value.length;
       els.translateCharCount.textContent = `${len} character${len === 1 ? "" : "s"}`;
@@ -2119,6 +2181,17 @@
      10. SETTINGS & DATA EXPORT / IMPORT
   ------------------------------------------------------------- */
   function setupSettings() {
+    if (els.meaningLanguageSelect) {
+      els.meaningLanguageSelect.addEventListener("change", event => {
+        const target = TranslationSupport.normalizeLanguage(event.target.value);
+        state.store.settings.translationLanguage = target;
+        if (els.translateTargetSelect) els.translateTargetSelect.value = target;
+        saveStoredState();
+        if (state.currentCard && state.currentQuiz) {
+          void localizeRenderedCard(state.currentCard, state.currentQuiz, isEnglishToChineseMode());
+        }
+      });
+    }
     // Learning mode
     if (els.learningModeSelect) {
       els.learningModeSelect.value = state.store.settings.learningMode || "chinese-to-english";
