@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vocabulary SRS",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "description": "Adaptive spaced-repetition vocabulary quizzes with a single newest review surface, meaning choices, example sentences, and adjustable speech volume.",
   "permissions": [
     "alarms",
@@ -28,7 +28,7 @@
     "128": "icons/icon128.png"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://dict.youdao.com https://translate.google.com https://translate.googleapis.com; media-src 'self' blob: data:;"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://dict.youdao.com https://translate.google.com https://translate.googleapis.com https://api.mymemory.translated.net; media-src 'self' blob: data:;"
   },
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzUV71aqpK2YWJcdPMKrDocZ87aNFU7sa3d2GwFaAyjOkCx+MEKnBAV8+MjkWlSssgp4Z4fH7IBlEJo7Cd34e0d5ePxwGq+fPP/JXyq/YE/1+ewxN+vwlt9hsOSrr4bRrE9F/OvZHjhtZzktEQm3iSTprD4yKBrVQrqFeMf7sEBiz6Rdvgs+zK5uWYf/U+iYcQhalrYmRjz3QMzStTnyLYsecqMOSxDtDhNH2mTwBKCbBmMtiLDzbRzhvTCZC23Ev4s5eiSv5fBJZPWd1Dy7b0yJVCayCcBo2ap8yOEo72Knk+zKZPU7Xbkniz5mvT/N4m4gYAx3/iDyvV1IFEZffkwIDAQAB"
 }
