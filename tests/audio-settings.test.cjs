@@ -49,3 +49,9 @@ test("English meanings contain no Chinese dictionary cross-references", () => {
     }
   }
 });
+
+test("translation language defaults to English and validates supported choices", () => {
+  assert.equal(settings({}).translationLanguage, "en");
+  assert.equal(settings({ translationLanguage: "vi" }).translationLanguage, "vi");
+  assert.equal(settings({ translationLanguage: "invalid" }).translationLanguage, "en");
+});
