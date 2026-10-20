@@ -5,7 +5,7 @@ const path = require("node:path");
 const vm = require("node:vm");
 
 const root = path.join(__dirname, "..");
-const translationScript = fs.readFileSync(path.join(root, "translation.js"), "utf8");
+const translationScript = fs.readFileSync(path.join(root, "web", "translation.js"), "utf8");
 
 function harness(translations = {}, status = 200) {
   const requests = [];
@@ -100,7 +100,7 @@ test("HTML numeric entities from the translation service are decoded", async () 
   assert.equal(await h.api.translateText("good", "vi"), "tốt");
 });
 
-test("web and docs use the same translation engine as the extension", () => {
+test("web and docs use identical translation engines", () => {
   for (const dir of ["web", "docs"]) {
     assert.equal(fs.readFileSync(path.join(root, dir, "translation.js"), "utf8"),
       translationScript);
