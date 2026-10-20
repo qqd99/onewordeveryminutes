@@ -107,8 +107,9 @@ test("missing/corrupt vocabulary chunk fails instead of silently showing only 1,
 test("service worker precaches all six vocabulary chunks for offline learning", () => {
   const sw = fs.readFileSync(path.join(dir, "sw.js"), "utf8");
   const html = fs.readFileSync(path.join(dir, "index.html"), "utf8");
-  assert.match(sw, /vocab-srs-cache-v18/);
-  assert.match(html, /app\.js\?v=18/);
+  assert.match(sw, /vocab-srs-cache-v19/);
+  assert.match(html, /app\.js\?v=19/);
+  assert.match(sw, /translation\.js/);
   for (const name of manifest.packs[0].cardFiles) {
     assert.ok(sw.includes("./" + name), "PWA cache is missing " + name);
   }

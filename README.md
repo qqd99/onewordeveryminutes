@@ -52,3 +52,9 @@ The word meaning is hidden until the learner chooses one of three shuffled meani
 In Settings, **Read the word automatically** controls automatic pronunciation. The separate **Read example sentences automatically** checkbox (on by default) controls whether the example sentence follows the word. When turned off, automatic playback reads only the current word twice. **Hear sentence** on a card still plays the sentence manually, even with automatic sentence reading disabled.
 
 The word and example audio use the selected pack's speech language. If an audio request has been replaced by a newer one, old pronunciation fallbacks are stopped instead of interrupting the new card. Meanings are English definitions (rather than Chinese dictionary cross-references).
+
+## Translate meanings to Vietnamese or other languages (1.14.0)
+
+In the Edge extension popup, open **Settings → Meaning language**, select **Vietnamese (Tiếng Việt)** (or another supported language) and click **Save settings**. Word meanings, three quiz answers and example-sentence meanings are translated for display; the original vocabulary JSON and word IDs stay unchanged so spaced-repetition progress remains intact. Word/sentence speech continues in the pack's source language.
+
+Translations are requested from the public [MyMemory API](https://mymemory.translated.net/doc/spec.php) only when needed, with a bounded local cache. An internet connection and service availability are required for uncached translations. If translation fails or becomes ambiguous, the original meanings remain available. This setting is saved with your SRS settings and backup. The web version offers the same **Meaning language** setting.

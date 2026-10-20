@@ -62,3 +62,7 @@ Add another pack object to the top-level `packs` array. The popup creates a pack
 - Never change an existing ID when correcting spelling, meaning, or an example.
 - Add new cards with new unique IDs.
 - Update by replacing files in the currently loaded folder and pressing **Reload** in Edge.
+
+## Meaning-language setting
+
+`translationLanguage` on a pack describes the language **already used in its `meaning` fields**, usually English; it does not control the learner's preferred display language. The new **Meaning language** selector stores the learner's display choice independently. Keep card IDs and source meanings unchanged: display translations are generated on demand and cached separately from the SRS progress data.

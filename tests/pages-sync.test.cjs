@@ -47,3 +47,13 @@ test("both published paths expose the two new audio switches", () => {
     assert.doesNotMatch(html, /id="autoSpeakToggle"/);
   }
 });
+
+test("both published pages expose the translated-meaning selector and helper", () => {
+  for (const directory of ["web", "docs"]) {
+    const html = fs.readFileSync(path.join(root, directory, "index.html"), "utf8");
+    assert.match(html, /id="meaningLanguageSelect"/);
+    assert.match(html, /id="translateTargetSelect"/);
+    assert.match(html, /translation\.js\?v=19/);
+    assert.ok(fs.existsSync(path.join(root, directory, "translation.js")));
+  }
+});

@@ -1,4 +1,4 @@
-importScripts("srs.js");
+importScripts("srs.js", "translation.js");
 
 const ALARM_NAME = "chinese-word-review";
 const OFFSCREEN_DOCUMENT_PATH = "offscreen.html";
@@ -34,6 +34,7 @@ const DEFAULT_SETTINGS = {
   volumePercent: 100,
   autoSpeak: true,
   readSentences: true,
+  translationLanguage: "en",
   activePackId: null
 };
 
@@ -78,6 +79,8 @@ function normalizeSettings(value) {
   settings.volumePercent = Math.min(100, Math.max(0, Math.round(Number(settings.volumePercent ?? 100))));
   settings.autoSpeak = settings.autoSpeak !== false;
   settings.readSentences = settings.readSentences !== false;
+  settings.translationLanguage = ["en", "vi", "fr", "es", "de", "ja", "ko", "zh-CN", "th", "id"].includes(settings.translationLanguage)
+    ? settings.translationLanguage : "en";
   settings.activePackId = cleanText(settings.activePackId) || null;
   return settings;
 }
@@ -481,6 +484,7 @@ function normalizeCard(rawCard, pack) {
     front,
     reading,
     meaning,
+    translationLanguage: pack.translationLanguage,
     speechText: cleanText(rawCard?.speechText) || front,
     speechLang: cleanText(rawCard?.speechLang) || pack.speechLang,
     fallbackSpeechText: cleanText(rawCard?.fallbackSpeechText) || reading,
@@ -1228,12 +1232,16 @@ async function startCountdownOnTab(tabId, { cardId = null, slotToken = null, spe
 
 async function presentCard(card, vocabulary, store, { showOverlay = true, speak = true, forceSpeak = false } = {}) {
   const progress = normalizeProgress(store.progress[card.id]);
+  const localized = await TranslationSupport.localizePresentation(
+    card, buildMeaningQuizState(vocabulary, card, store),
+    store.settings.translationLanguage, TranslationSupport.sourceLanguage(card)
+  );
   const displayCard = {
-    ...card,
+    ...localized.card,
     stageLabel: progress.lastReviewedAt > 0
       ? (progress.repetitions > 0 ? "REVIEW" : "LEARNING")
       : "NEW WORD",
-    quiz: buildMeaningQuizState(vocabulary, card, store)
+    quiz: localized.quiz
   };
   const results = { card: displayCard, overlay: null, speech: null };
   const shouldSpeak = Boolean(speak && (forceSpeak || store.settings.autoSpeak));
@@ -1514,17 +1522,20 @@ async function answerMeaningQuiz(cardId, choiceId) {
     correct
   });
 
+  const localized = await TranslationSupport.localizePresentation(
+    card, quiz, store.settings.translationLanguage, TranslationSupport.sourceLanguage(card)
+  );
   return {
     ...review,
     quiz: {
-      ...quiz,
+      ...localized.quiz,
       answered: true,
       selectedChoiceId: selectedChoice.id,
       correct,
       rating
     },
-    selectedMeaning: selectedChoice.text,
-    correctMeaning: card.meaning
+    selectedMeaning: localized.quiz.choices.find(choice => choice.id === selectedChoice.id)?.text || selectedChoice.text,
+    correctMeaning: localized.card.meaning
   };
 }
 
@@ -1567,15 +1578,19 @@ async function getDashboard() {
     "lastKnownExtensionVersion",
     "lastUpgradeFromVersion"
   ]);
+  const localized = await TranslationSupport.localizePresentation(
+    card, buildMeaningQuizState(vocabulary, card, freshStore),
+    freshStore.settings.translationLanguage, TranslationSupport.sourceLanguage(card)
+  );
 
   return {
     ok: true,
     settings: freshStore.settings,
-    card,
+    card: localized.card,
     cardProgress,
     reviewedThisSlot,
     currentRating,
-    quiz: buildMeaningQuizState(vocabulary, card, freshStore),
+    quiz: localized.quiz,
     currentCardChangedAt: freshStore.currentCardChangedAt,
     currentCardExpiresAt: freshStore.currentCardExpiresAt,
     vocabulary: {
@@ -1748,6 +1763,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           volumePercent: message.settings?.volumePercent ?? store.settings.volumePercent ?? 100,
           autoSpeak: message.settings?.autoSpeak !== false,
           readSentences: message.settings?.readSentences ?? store.settings.readSentences,
+          translationLanguage: message.settings?.translationLanguage ?? store.settings.translationLanguage,
           activePackId: message.settings?.activePackId || store.settings.activePackId
         });
         const vocabularyState = await ensureVocabulary(false, requestedSettings);
@@ -1869,6 +1885,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           volumePercent: message.settings?.volumePercent ?? store.settings.volumePercent ?? 100,
           autoSpeak: message.settings?.autoSpeak !== false,
           readSentences: message.settings?.readSentences ?? store.settings.readSentences,
+          translationLanguage: message.settings?.translationLanguage ?? store.settings.translationLanguage,
           activePackId: message.settings?.activePackId || store.settings.activePackId
         });
         const vocabularyState = await ensureVocabulary(false, requestedSettings);
