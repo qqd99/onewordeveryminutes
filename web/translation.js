@@ -1,4 +1,4 @@
-/* Shared English-meaning translation helper for the extension and web app. */
+/* English-meaning translation helper for the web app. */
 (function (root) {
   "use strict";
 
@@ -87,6 +87,56 @@
     }, 800);
   }
 
+  // Prefer the same Google endpoint already used by the web app's Translate tab.
+  // MyMemory is a fallback: its anonymous quota can be exhausted independently.
+  async function requestMeaningTranslation(original, target, fromLanguage) {
+    const providers = [
+      {
+        url: `https://translate.googleapis.com/translate_a/single?${new URLSearchParams({
+          client: "gtx", sl: fromLanguage, tl: target, dt: "t", q: original
+        })}`,
+        timeout: 5500,
+        read: data => Array.isArray(data?.[0])
+          ? data[0].map(part => (part && typeof part[0] === "string") ? part[0] : "").join("")
+          : ""
+      },
+      {
+        url: `https://api.mymemory.translated.net/get?${new URLSearchParams({
+          q: original, langpair: `${fromLanguage}|${target}`
+        })}`,
+        timeout: 6500,
+        read: data => {
+          if (Number(data?.responseStatus) !== 200) {
+            throw new Error("Translation quota reached or request rejected");
+          }
+          return data?.responseData?.translatedText || "";
+        }
+      }
+    ];
+
+    for (const provider of providers) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), provider.timeout);
+      try {
+        const response = await fetch(provider.url, {
+          signal: controller.signal, credentials: "omit"
+        });
+        if (!response.ok) throw new Error(`Translation HTTP ${response.status}`);
+        const translated = decodeEntities(provider.read(await response.json())).trim();
+        if (!translated || /MYMEMORY WARNING/i.test(translated) ||
+            translated.toLocaleLowerCase() === original.toLocaleLowerCase()) {
+          throw new Error("No translated meaning returned");
+        }
+        return translated;
+      } catch (error) {
+        // Try the other provider before falling back to the original English.
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+    return original;
+  }
+
   async function translateText(text, targetLanguage, fromLanguage = "en") {
     const original = String(text ?? "").trim();
     const target = normalizeLanguage(targetLanguage);
@@ -99,36 +149,16 @@
     if (pending.has(key)) return pending.get(key);
 
     const task = (async () => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 6500);
       try {
-        const params = new URLSearchParams({
-          q: original,
-          langpair: `${fromLanguage}|${target}`
-        });
-        const response = await fetch(`https://api.mymemory.translated.net/get?${params}`, {
-          signal: controller.signal,
-          credentials: "omit"
-        });
-        if (!response.ok) throw new Error(`Translation HTTP ${response.status}`);
-        const payload = await response.json();
-        if (Number(payload?.responseStatus) !== 200) {
-          throw new Error("Translation quota reached or request rejected");
+        const translated = await requestMeaningTranslation(original, target, fromLanguage);
+        if (translated !== original) {
+          cache.delete(key);
+          cache.set(key, translated);
+          while (cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
+          persistCacheSoon();
         }
-        const translated = decodeEntities(payload?.responseData?.translatedText || "").trim();
-        if (!translated || /MYMEMORY WARNING/i.test(translated)) {
-          throw new Error("Empty or invalid translation");
-        }
-        cache.delete(key);
-        cache.set(key, translated);
-        while (cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
-        persistCacheSoon();
         return translated;
-      } catch (error) {
-        // Never replace a valid English meaning with an error or blank value.
-        return original;
       } finally {
-        clearTimeout(timeout);
         pending.delete(key);
       }
     })();
@@ -136,14 +166,14 @@
     return task;
   }
 
-  async function localizePresentation(card, quiz, targetLanguage, fromLanguage = "en", translateChoices = true) {
+  async function localizePresentation(card, quiz, targetLanguage, fromLanguage = "en", translateChoices = true, translateExample = true) {
     const target = normalizeLanguage(targetLanguage);
     if (target === "en" || target === fromLanguage) return { card, quiz };
     const choices = translateChoices && Array.isArray(quiz?.choices) ? quiz.choices : [];
     const [localizedChoices, localizedMeaning, localizedExample] = await Promise.all([
       Promise.all(choices.map(choice => translateText(choice.text, target, fromLanguage))),
       translateText(card.meaning, target, fromLanguage),
-      translateText(card.example?.meaning || "", target, fromLanguage)
+      translateExample ? translateText(card.example?.meaning || "", target, fromLanguage) : (card.example?.meaning || "")
     ]);
 
     const keys = localizedChoices.map(value => value.toLocaleLowerCase().replace(/\s+/g, ""));
