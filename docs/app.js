@@ -1244,12 +1244,15 @@
 
   // Only presentation text is translated; source cards and quiz IDs are immutable.
   let visibleTranslationGeneration = 0;
+  let visibleCardMeaning = "";
   async function localizeRenderedCard(card, quiz, englishToChinese) {
     const generation = ++visibleTranslationGeneration;
     const target = TranslationSupport.normalizeLanguage(state.store.settings.translationLanguage);
     if (!card || !quiz) return;
 
-    if (englishToChinese) els.hanziTerm.textContent = card.meaning || "—";
+    visibleCardMeaning = card.meaning || "—";
+    if (englishToChinese) els.hanziTerm.textContent = target === "en"
+      ? visibleCardMeaning : "Translating meaning…";
     else for (const choice of quiz.choices) {
       const button = [...els.choicesGrid.querySelectorAll(".choice-btn")]
         .find(element => element.dataset.choiceId === choice.id);
@@ -1264,11 +1267,15 @@
     }
     if (target === "en") return;
 
-    const localized = await TranslationSupport.localizePresentation(card, quiz, target, "en", !englishToChinese);
+    const localized = await TranslationSupport.localizePresentation(card, quiz, target, "en", !englishToChinese, !englishToChinese);
     if (generation !== visibleTranslationGeneration || state.currentCard !== card ||
         state.currentQuiz !== quiz || state.store.settings.translationLanguage !== target) return;
 
-    if (englishToChinese) els.hanziTerm.textContent = localized.card.meaning;
+    const returnedMeaning = localized.card.meaning || card.meaning || "—";
+    visibleCardMeaning = returnedMeaning === card.meaning
+      ? `Translation unavailable (English): ${returnedMeaning}`
+      : returnedMeaning;
+    if (englishToChinese) els.hanziTerm.textContent = visibleCardMeaning;
     else for (const choice of localized.quiz.choices) {
       const button = [...els.choicesGrid.querySelectorAll(".choice-btn")]
         .find(element => element.dataset.choiceId === choice.id);
@@ -1278,7 +1285,7 @@
     if (state.quizAnswered) {
       const reading = card.reading ? ` · ${card.reading}` : "";
       els.revealedMeaning.textContent = englishToChinese
-        ? `Answer: ${card.front}${reading} — ${localized.card.meaning}`
+        ? `Answer: ${card.front}${reading} — ${visibleCardMeaning}`
         : `Meaning: ${localized.card.meaning}`;
     }
   }
@@ -1476,7 +1483,7 @@
     if (isEnglishToChineseMode()) {
       const reading = state.currentCard.reading ? ` · ${state.currentCard.reading}` : "";
       els.revealedMeaning.textContent =
-        `Answer: ${state.currentCard.front}${reading} — ${state.currentCard.meaning}`;
+        `Answer: ${state.currentCard.front}${reading} — ${els.hanziTerm.textContent || visibleCardMeaning}`;
       if (state.currentCard.example?.text) els.exampleCard.hidden = false;
     } else {
       els.revealedMeaning.textContent = `Meaning: ${state.currentQuiz.correctMeaning}`;

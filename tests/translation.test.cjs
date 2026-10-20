@@ -7,7 +7,7 @@ const vm = require("node:vm");
 const root = path.join(__dirname, "..");
 const translationScript = fs.readFileSync(path.join(root, "web", "translation.js"), "utf8");
 
-function harness(translations = {}, status = 200) {
+function harness(translations = {}, status = 200, googleTranslations = {}, googleStatus = 503) {
   const requests = [];
   const context = vm.createContext({
     URLSearchParams,
@@ -16,17 +16,24 @@ function harness(translations = {}, status = 200) {
     clearTimeout: () => {},
     fetch: async url => {
       const parsed = new URL(url);
+      const isGoogle = parsed.hostname === "translate.googleapis.com";
       const source = parsed.searchParams.get("q");
-      const languagePair = parsed.searchParams.get("langpair");
-      requests.push({ source, languagePair });
+      const languagePair = isGoogle
+        ? `${parsed.searchParams.get("sl")}|${parsed.searchParams.get("tl")}`
+        : parsed.searchParams.get("langpair");
+      requests.push({ source, languagePair, provider: isGoogle ? "google" : "mymemory" });
+      const responseStatus = isGoogle ? googleStatus : status;
       return {
-        ok: status === 200,
-        status,
-        json: async () => ({
-          responseStatus: status,
-          responseData: { translatedText: translations[source] ?? source }
-        })
+        ok: responseStatus === 200,
+        status: responseStatus,
+        json: async () => isGoogle
+          ? [[[googleTranslations[source] ?? source, source]]]
+          : {
+              responseStatus,
+              responseData: { translatedText: translations[source] ?? source }
+            }
       };
+
     }
   });
   vm.runInContext(translationScript, context);
@@ -105,4 +112,75 @@ test("web and docs use identical translation engines", () => {
     assert.equal(fs.readFileSync(path.join(root, dir, "translation.js"), "utf8"),
       translationScript);
   }
+});
+
+
+test("reverse Chinese quiz displays Vietnamese for the screenshot's English phrase", async () => {
+  const phrase = "to get out of a predicament";
+  const vietnamese = "thoát khỏi tình thế khó khăn";
+  const h = harness({}, 429, { [phrase]: vietnamese }, 200);
+  const reverseCard = {
+    id: "zh-predicament", front: "出头", meaning: phrase,
+    example: { text: "出头", meaning: "To get out of a predicament." }
+  };
+  const reverseQuiz = {
+    correctChoiceId: "correct",
+    choices: [{ id: "correct", text: "出头" }, { id: "d1", text: "喇叭" }, { id: "d2", text: "亚军" }]
+  };
+  const translated = await h.api.localizePresentation(
+    reverseCard, reverseQuiz, "vi", "en", false, false
+  );
+  assert.equal(translated.card.meaning, vietnamese);
+  assert.equal(translated.card.example.meaning, reverseCard.example.meaning,
+    "Hidden example translation must not delay the reverse quiz prompt");
+  assert.equal(translated.quiz, reverseQuiz, "Chinese answer choices remain unchanged");
+  assert.equal(reverseCard.meaning, phrase, "Vocabulary source data remains English");
+  assert.ok(h.requests.some(request => request.provider === "google" &&
+    request.source === phrase && request.languagePair === "en|vi"));
+  assert.ok(!h.requests.some(request => request.source === reverseCard.example.meaning),
+    "Do not request the hidden example for reverse quizzes");
+});
+
+test("reverse quiz shows translation progress and updates revealed answers", async () => {
+  const source = fs.readFileSync(path.join(root, "web", "app.js"), "utf8");
+  const start = source.indexOf("  let visibleTranslationGeneration = 0;");
+  const end = source.indexOf("  function renderCard(", start);
+  assert.ok(start >= 0 && end > start, "Must find web localized quiz renderer");
+
+  const reverseCard = { id: "zh-predicament", front: "出头",
+    reading: "chū tóu", meaning: "to get out of a predicament" };
+  const reverseQuiz = { correctChoiceId: "correct", choices: [] };
+  const state = {
+    store: { settings: { translationLanguage: "vi" } },
+    currentCard: reverseCard, currentQuiz: reverseQuiz, quizAnswered: false
+  };
+  const els = {
+    hanziTerm: { textContent: "" },
+    exampleEnglish: { textContent: "" },
+    revealedMeaning: { textContent: "" }
+  };
+  let resolveTranslation;
+  const context = vm.createContext({
+    state, els,
+    TranslationSupport: {
+      normalizeLanguage: language => language,
+      localizePresentation: () => new Promise(resolve => { resolveTranslation = resolve; })
+    }
+  });
+  vm.runInContext(source.slice(start, end) +
+    "\nglobalThis.localize = localizeRenderedCard;", context);
+  const pending = context.localize(reverseCard, reverseQuiz, true);
+  assert.equal(els.hanziTerm.textContent, "Translating meaning…",
+    "Never flash the English meaning on a Vietnamese reverse quiz");
+
+  // The learner can answer before the asynchronous translation finishes.
+  state.quizAnswered = true;
+  resolveTranslation({
+    card: { ...reverseCard, meaning: "thoát khỏi tình thế khó khăn" },
+    quiz: reverseQuiz
+  });
+  await pending;
+  assert.equal(els.hanziTerm.textContent, "thoát khỏi tình thế khó khăn");
+  assert.match(els.revealedMeaning.textContent, /thoát khỏi tình thế khó khăn/);
+  assert.equal(reverseCard.meaning, "to get out of a predicament");
 });
