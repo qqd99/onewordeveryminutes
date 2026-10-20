@@ -61,7 +61,7 @@ Then open `http://localhost:8080` in your browser.
   - Web Speech API (`SpeechSynthesis`) with auto-selection of native Chinese voices (`zh-CN`, `cmn`).
   - Online audio fallback (Google & Youdao TTS) for unsupported platforms.
   - Configurable word repetition, sentence playback toggle (enabled by default), and speed/volume controls. Word playback completes before a sentence begins, and answering a quiz no longer restarts speech.
-- **Word List & Deck Browser**: Search and filter all 1,000 HSK words by status (*Due*, *Reviewed*, *New*, or *All*). During an active learning session, click a word to practice it immediately; pronunciation buttons remain available separately.
+- **Word List & Deck Browser**: Search and filter 10,000 common Mandarin words by status (*Due*, *Reviewed*, *New*, or *All*). During an active learning session, click a word to practice it immediately; pronunciation buttons remain available separately.
 - **Study Modes**:
   - **Self-Paced Study**: Review at your own speed with keyboard shortcuts (`1`, `2`, `3` for answers, `Space` for audio/next, `R` for Remember, `F` for Forget, `N` for New Word).
   - **Interval Reminder Mode**: Automatically prompts you with cards every *X* minutes with optional desktop/browser notifications.
@@ -139,7 +139,7 @@ Changing the learning mode while a card is already open applies to the next card
 
 Mode 2 no longer allows answer length to reveal the correct Chinese word. The correct answer and both distractors always have the **same Chinese character count**. A one-character answer is paired only with one-character distractors, a two-character answer only with two-character distractors, and so on.
 
-The current HSK-1000 catalog has enough alternatives for all 1-, 2-, and 3-character cards. The single 4-character card, **公共汽车**, is skipped in Mode 2 because the catalog does not contain two other 4-character vocabulary cards; it remains available in Mode 1. This preserves the three-choice format without introducing fake words or obvious length clues. Deck clicks also reject Mode 2 cards that cannot form three same-length choices.
+Mode 2 requires two other Chinese words of the same character length. The expanded 10,000-word catalog contains enough alternatives for its common 1–4 character lengths, including **公共汽车**, so the earlier four-character limitation no longer applies. Cards with unusual lengths and too few alternatives remain excluded from Mode 2 to prevent answer-length clues.
 
 The v15 regression suite checks the full deployed vocabulary catalog so every eligible Mode 2 card produces exactly three choices of identical character length. The update is mirrored through both `web/` and `docs/`.
 
@@ -163,3 +163,11 @@ The web app now supports separate **Save Files** in Settings, plus a quick-save 
 - **Import as new save:** opens an existing vocabulary backup JSON into its own slot without modifying the current one. The original **Import JSON** action still merges progress into the selected slot, so existing backups remain compatible.
 
 Named save slots are stored automatically in **browser localStorage** and do not sync across devices or browsers. Keep downloaded backups if you want to transfer between devices or protect against clearing browser data. All slots share the vocabulary catalog but store learning progress independently. Session start/pause status is temporary and not saved.
+
+## Common Chinese 10,000 vocabulary (v18)
+
+The website now loads **10,000 distinct simplified Chinese words** in the existing vocabulary pack, preserving all original 1,000 card IDs, meanings, examples and progress. The additional 9,000 entries are selected in ascending subtitle-corpus frequency-rank order from the HSK 3.0 (2026) Zhongdex canon. They provide pinyin, English definitions, frequency rank, and **8,997 sourced graded example sentences**. All newer entries retain dictionary and sentence provenance.
+
+For faster, more reliable downloads, the original 1,000 cards remain in `vocabulary.json` and the added 9,000 are loaded from six `vocabulary/common-01.json`–`common-06.json` files during initialization. The app verifies the final card count before enabling Start learning, and the service worker precaches all six files for offline study. The pack ID stays `zh-hsk-core-1000` for backward compatibility with existing browser saves, even though its display name is now **Common Chinese — 10,000 Words**.
+
+**Attribution and license:** The added vocabulary and derived example data are CC BY-SA 4.0, adapted from [Zhongdex by SayMei](https://github.com/saymei/zhongdex), [CC-CEDICT](https://cc-cedict.org), and HSK 3.0 (2026). See [VOCABULARY_SOURCES.md](VOCABULARY_SOURCES.md). The frequency order reflects the HSK source's subtitle-corpus rankings; the overall 10,000-word pack intentionally retains the previous 1,000 cards, so it is not advertised as an exact top-10,000 corpus ranking.
