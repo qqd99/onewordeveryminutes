@@ -7,7 +7,8 @@
   "use strict";
 
   // Storage key
-  const STORAGE_KEY = "vocab_srs_state_v1";
+  const STORAGE_KEY = "vocab_srs_state_v1"; // Legacy single-save migration only
+  const SAVE_SLOTS_KEY = "vocab_srs_save_slots_v1";
 
   // Global App State
   const state = {
@@ -48,6 +49,9 @@
     deckSearchQuery: ""
   };
 
+  const defaultStore = JSON.parse(JSON.stringify(state.store));
+  let saveSlots = null;
+
   // DOM Elements cache
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => document.querySelectorAll(selector);
@@ -55,6 +59,7 @@
   const els = {
     themeToggle: $("#themeToggle"),
     packSelect: $("#packSelect"),
+    quickSaveSelect: $("#quickSaveSelect"),
     appModeBadge: $("#appModeBadge"),
     tabButtons: $$(".tab-button"),
     tabViews: $$(".tab-view"),
@@ -151,6 +156,14 @@
     readSentenceToggle: $("#readSentenceToggle"),
     wordRepeatCount: $("#wordRepeatCount"),
     wordRepeatLabel: $("#wordRepeatLabel"),
+    saveSlotSelect: $("#saveSlotSelect"),
+    newSaveBtn: $("#newSaveBtn"),
+    duplicateSaveBtn: $("#duplicateSaveBtn"),
+    renameSaveBtn: $("#renameSaveBtn"),
+    deleteSaveBtn: $("#deleteSaveBtn"),
+    importSaveBtn: $("#importSaveBtn"),
+    importSaveFile: $("#importSaveFile"),
+    activeSaveInfo: $("#activeSaveInfo"),
     exportDataBtn: $("#exportDataBtn"),
     importDataBtn: $("#importDataBtn"),
     importFileInput: $("#importFileInput"),
@@ -166,40 +179,353 @@
   /* -------------------------------------------------------------
      1. STORAGE & STATE PERSISTENCE
   ------------------------------------------------------------- */
+  function cloneSaveData(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
+
+  function normalizeSaveStore(raw) {
+    const stored = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+    const settings = stored.settings && typeof stored.settings === "object" &&
+      !Array.isArray(stored.settings) ? stored.settings : {};
+    const normalized = {
+      settings: { ...defaultStore.settings, ...settings },
+      progress: stored.progress && typeof stored.progress === "object" &&
+        !Array.isArray(stored.progress) ? cloneSaveData(stored.progress) : {},
+      lastCardId: typeof stored.lastCardId === "string" ? stored.lastCardId : null,
+      currentCardId: typeof stored.currentCardId === "string" ? stored.currentCardId : null
+    };
+    if (typeof settings.readWords !== "boolean" && typeof settings.autoSpeak === "boolean") {
+      normalized.settings.readWords = settings.autoSpeak;
+    }
+    delete normalized.settings.autoSpeak;
+    if (!["chinese-to-english", "english-to-chinese"].includes(normalized.settings.learningMode)) {
+      normalized.settings.learningMode = "chinese-to-english";
+    }
+    return normalized;
+  }
+
+  function createSaveRegistry(store) {
+    const now = new Date().toISOString();
+    return {
+      schemaVersion: 1,
+      activeId: "main",
+      slots: { main: {
+        name: "Main Save", createdAt: now, updatedAt: now,
+        store: normalizeSaveStore(store)
+      } }
+    };
+  }
+
   function loadStoredState() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        state.store = {
-          settings: { ...state.store.settings, ...(parsed.settings || {}) },
-          progress: parsed.progress || {},
-          lastCardId: parsed.lastCardId || null,
-          currentCardId: parsed.currentCardId || null
-        };
-        // Migrate the old word preference without changing sentence playback.
-        if (typeof parsed.settings?.readWords !== "boolean" &&
-            typeof parsed.settings?.autoSpeak === "boolean") {
-          state.store.settings.readWords = parsed.settings.autoSpeak;
-        }
-        delete state.store.settings.autoSpeak;
-        if (state.store.settings.intervalHours === undefined) state.store.settings.intervalHours = 0;
-        if (state.store.settings.intervalSeconds === undefined) state.store.settings.intervalSeconds = 0;
-        if (!["chinese-to-english", "english-to-chinese"].includes(state.store.settings.learningMode)) {
-          state.store.settings.learningMode = "chinese-to-english";
+      const rawSlots = localStorage.getItem(SAVE_SLOTS_KEY);
+      if (rawSlots) {
+        const parsed = JSON.parse(rawSlots);
+        if (parsed && parsed.slots && typeof parsed.slots === "object" &&
+            !Array.isArray(parsed.slots)) {
+          const cleanSlots = Object.create(null);
+          for (const [id, slot] of Object.entries(parsed.slots)) {
+            if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id) ||
+                !slot || typeof slot !== "object" || Array.isArray(slot)) continue;
+            cleanSlots[id] = {
+              name: String(slot.name || "Untitled save").trim().slice(0, 60),
+              createdAt: slot.createdAt || new Date().toISOString(),
+              updatedAt: slot.updatedAt || new Date().toISOString(),
+              store: normalizeSaveStore(slot.store)
+            };
+          }
+          const ids = Object.keys(cleanSlots);
+          if (ids.length) {
+            saveSlots = {
+              schemaVersion: 1,
+              activeId: ids.includes(parsed.activeId) ? parsed.activeId : ids[0],
+              slots: cleanSlots
+            };
+          }
         }
       }
+      if (!saveSlots) {
+        const old = localStorage.getItem(STORAGE_KEY);
+        saveSlots = createSaveRegistry(old ? JSON.parse(old) : defaultStore);
+        // Preserve the original single-save value for safety during migration.
+        persistSaveSlots();
+      }
+      state.store = cloneSaveData(saveSlots.slots[saveSlots.activeId].store);
     } catch (err) {
-      console.warn("Could not read local storage state:", err);
+      console.warn("Could not load save slots:", err);
+      if (!saveSlots) {
+        // A damaged slots index must not erase a readable legacy save.
+        try {
+          const old = localStorage.getItem(STORAGE_KEY);
+          saveSlots = createSaveRegistry(old ? JSON.parse(old) : defaultStore);
+        } catch (_) {
+          saveSlots = createSaveRegistry(defaultStore);
+        }
+      }
+      state.store = cloneSaveData(saveSlots.slots[saveSlots.activeId].store);
+    }
+  }
+
+  function persistSaveSlots() {
+    try {
+      localStorage.setItem(SAVE_SLOTS_KEY, JSON.stringify(saveSlots));
+      return true;
+    } catch (err) {
+      console.warn("Could not save learning files to browser storage:", err);
+      return false;
     }
   }
 
   function saveStoredState() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.store));
-    } catch (err) {
-      console.warn("Could not save state to local storage:", err);
+    if (!saveSlots) return false;
+    const slot = saveSlots.slots[saveSlots.activeId];
+    if (!slot) return false;
+    slot.store = cloneSaveData(state.store);
+    slot.updatedAt = new Date().toISOString();
+    return persistSaveSlots();
+  }
+
+  function renderSaveSlotControls() {
+    if (!saveSlots) return;
+    for (const control of [els.quickSaveSelect, els.saveSlotSelect]) {
+      if (!control) continue;
+      control.innerHTML = "";
+      for (const [id, slot] of Object.entries(saveSlots.slots)) {
+        const option = document.createElement("option");
+        option.value = id;
+        option.textContent = slot.name;
+        control.appendChild(option);
+      }
+      control.value = saveSlots.activeId;
     }
+    if (els.deleteSaveBtn) {
+      els.deleteSaveBtn.disabled = Object.keys(saveSlots.slots).length <= 1;
+    }
+    if (els.activeSaveInfo) {
+      const active = saveSlots.slots[saveSlots.activeId];
+      const total = Object.keys(active.store.progress).length;
+      els.activeSaveInfo.textContent =
+        `Active: ${active.name} · ${total} cards with saved progress. Saves stay in this browser unless exported.`;
+    }
+  }
+
+  function resetLearningForSaveSwitch() {
+    stopAudio();
+    if (state.timerId) clearInterval(state.timerId);
+    state.timerId = null;
+    state.nextReminderTime = null;
+    state.learningStatus = "idle";
+    state.currentCard = null;
+    state.currentQuiz = null;
+    state.currentReviewBaseline = null;
+    state.quizAnswered = false;
+    state.selectedChoiceId = null;
+  }
+
+  function syncActiveSaveToPage() {
+    const settings = state.store.settings;
+    document.documentElement.setAttribute("data-theme", settings.theme || "light");
+    els.themeToggle.textContent = settings.theme === "dark" ? "☀️" : "🌙";
+    if (els.learningModeSelect) els.learningModeSelect.value = settings.learningMode;
+    if (els.reminderEnabled) els.reminderEnabled.checked = Boolean(settings.reminderEnabled);
+    if (els.intervalHoursInput) els.intervalHoursInput.value = settings.intervalHours ?? 0;
+    if (els.intervalMinutesInput) els.intervalMinutesInput.value = settings.intervalMinutes ?? 15;
+    if (els.intervalSecondsInput) els.intervalSecondsInput.value = settings.intervalSeconds ?? 0;
+    if (els.intervalSummaryText) {
+      els.intervalSummaryText.textContent = formatTimeInterval(getTotalIntervalSeconds());
+    }
+    if (els.enableBrowserNotifications) {
+      els.enableBrowserNotifications.checked = Boolean(settings.notificationsEnabled);
+    }
+    if (els.audioEngineSelect) els.audioEngineSelect.value = settings.audioEngine || "auto";
+    if (els.volumeRange) els.volumeRange.value = settings.volume ?? 100;
+    if (els.volumeLabel) els.volumeLabel.textContent = `${settings.volume ?? 100}%`;
+    if (els.speedRange) els.speedRange.value = settings.speed ?? 0.85;
+    if (els.speedLabel) els.speedLabel.textContent = `${settings.speed ?? 0.85}x`;
+    if (els.readWordToggle) els.readWordToggle.checked = settings.readWords !== false;
+    if (els.readSentenceToggle) els.readSentenceToggle.checked = settings.readSentences !== false;
+    if (els.wordRepeatCount) els.wordRepeatCount.value = settings.wordRepeat || 2;
+    if (els.wordRepeatLabel) els.wordRepeatLabel.textContent = settings.wordRepeat || 2;
+    loadVoices();
+
+    if (state.catalog?.packs?.length) {
+      state.activePack = state.catalog.packs.find(pack =>
+        pack.id === settings.activePackId
+      ) || state.catalog.packs[0];
+      if (els.packSelect) els.packSelect.value = state.activePack.id;
+      updateDashboardCounts();
+      renderDeckList();
+    }
+    updateLearningSessionUi();
+    scheduleNextReminder();
+    renderSaveSlotControls();
+  }
+
+  function switchSaveSlot(nextId) {
+    if (!saveSlots?.slots[nextId]) return false;
+    if (nextId === saveSlots.activeId) return true;
+    if (!saveStoredState()) {
+      showToast("Could not save current progress. Save switch cancelled.");
+      renderSaveSlotControls();
+      return false;
+    }
+
+    const formerId = saveSlots.activeId;
+    saveSlots.activeId = nextId;
+    if (!persistSaveSlots()) {
+      saveSlots.activeId = formerId;
+      renderSaveSlotControls();
+      showToast("Storage is full or unavailable. Save switch cancelled.");
+      return false;
+    }
+
+    resetLearningForSaveSwitch();
+    state.store = cloneSaveData(saveSlots.slots[nextId].store);
+    syncActiveSaveToPage();
+    showToast(`Switched to ${saveSlots.slots[nextId].name}. Press Start learning to continue.`);
+    return true;
+  }
+
+  function addSaveSlot(name, sourceStore) {
+    const label = String(name || "").trim().slice(0, 60);
+    if (!label) return null;
+    if (Object.values(saveSlots.slots).some(slot => slot.name.toLowerCase() === label.toLowerCase())) {
+      showToast("A save with this name already exists.");
+      return null;
+    }
+    if (!saveStoredState()) {
+      showToast("Could not save current progress. New save cancelled.");
+      return null;
+    }
+    const id = `save-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    const now = new Date().toISOString();
+    saveSlots.slots[id] = {
+      name: label, createdAt: now, updatedAt: now,
+      store: normalizeSaveStore(sourceStore)
+    };
+    if (!persistSaveSlots()) {
+      delete saveSlots.slots[id];
+      showToast("Could not create save: browser storage may be full.");
+      return null;
+    }
+    renderSaveSlotControls();
+    return id;
+  }
+
+  function setupSaveSlots() {
+    renderSaveSlotControls();
+    for (const control of [els.quickSaveSelect, els.saveSlotSelect]) {
+      control?.addEventListener("change", event => {
+        switchSaveSlot(event.target.value);
+      });
+    }
+    els.newSaveBtn?.addEventListener("click", () => {
+      const name = window.prompt("New save name:", `Save ${Object.keys(saveSlots.slots).length + 1}`);
+      if (name === null) return;
+      const id = addSaveSlot(name, {
+        settings: cloneSaveData(state.store.settings),
+        progress: {}, currentCardId: null, lastCardId: null
+      });
+      if (id) switchSaveSlot(id);
+    });
+    els.duplicateSaveBtn?.addEventListener("click", () => {
+      const name = window.prompt("Duplicate save name:",
+        `${saveSlots.slots[saveSlots.activeId].name} (copy)`);
+      if (name === null) return;
+      const id = addSaveSlot(name, state.store);
+      if (id) switchSaveSlot(id);
+    });
+    els.renameSaveBtn?.addEventListener("click", () => {
+      const slot = saveSlots.slots[saveSlots.activeId];
+      const name = window.prompt("Rename save:", slot.name);
+      if (name === null) return;
+      const label = name.trim().slice(0, 60);
+      if (!label || Object.entries(saveSlots.slots).some(([id, item]) =>
+        id !== saveSlots.activeId && item.name.toLowerCase() === label.toLowerCase())) {
+        showToast("Choose a different, nonempty save name.");
+        return;
+      }
+      const oldName = slot.name;
+      slot.name = label;
+      if (!persistSaveSlots()) {
+        slot.name = oldName;
+        showToast("Could not rename save.");
+      }
+      renderSaveSlotControls();
+    });
+    els.deleteSaveBtn?.addEventListener("click", () => {
+      if (Object.keys(saveSlots.slots).length <= 1) return;
+      const id = saveSlots.activeId;
+      const name = saveSlots.slots[id].name;
+      if (!window.confirm(`Delete "${name}" and all its learning progress? Export a backup first if needed.`)) {
+        return;
+      }
+      const previous = cloneSaveData(saveSlots);
+      const nextId = Object.keys(saveSlots.slots).find(other => other !== id);
+      delete saveSlots.slots[id];
+      saveSlots.activeId = nextId;
+      if (!persistSaveSlots()) {
+        saveSlots = previous;
+        showToast("Could not delete save.");
+        renderSaveSlotControls();
+        return;
+      }
+      resetLearningForSaveSwitch();
+      state.store = cloneSaveData(saveSlots.slots[nextId].store);
+      syncActiveSaveToPage();
+      showToast(`Deleted "${name}".`);
+    });
+
+    els.importSaveBtn?.addEventListener("click", () => els.importSaveFile?.click());
+    els.importSaveFile?.addEventListener("change", async event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const imported = JSON.parse(await file.text());
+        const raw = imported?.progress ?? imported?.payload?.progress ??
+          imported?.chineseSrsBackupProgress ??
+          (imported?.settings || imported?.schemaVersion ? null : imported);
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+          throw new Error("No valid progress data found.");
+        }
+        const validIds = new Set((state.catalog?.packs || []).flatMap(pack =>
+          pack.cards.map(card => card.id)
+        ));
+        const progress = {};
+        for (const [id, value] of Object.entries(raw)) {
+          if (validIds.has(id) && value && typeof value === "object" && !Array.isArray(value)) {
+            progress[id] = normalizeProgress(value);
+          }
+        }
+        if (Object.keys(raw).length > 0 && Object.keys(progress).length === 0) {
+          throw new Error("No matching vocabulary cards found.");
+        }
+        const settings = imported?.settings ?? imported?.payload?.settings ?? {};
+        const safeSettings = settings && typeof settings === "object" && !Array.isArray(settings)
+          ? settings : {};
+        const importedStore = normalizeSaveStore({
+          settings: {
+            ...state.store.settings, ...safeSettings,
+            readWords: typeof safeSettings.readWords === "boolean" ? safeSettings.readWords
+              : typeof safeSettings.autoSpeak === "boolean" ? safeSettings.autoSpeak
+              : state.store.settings.readWords
+          },
+          progress,
+          currentCardId: imported?.currentCardId ?? imported?.payload?.currentCardId,
+          lastCardId: imported?.lastCardId ?? imported?.payload?.lastCardId
+        });
+        const suggested = String(imported?.saveName || file.name.replace(/\.json$/i, "") ||
+          "Imported save").slice(0, 60);
+        const label = window.prompt("Name for the imported save:", suggested);
+        if (label === null) return;
+        const id = addSaveSlot(label, importedStore);
+        if (id) switchSaveSlot(id);
+      } catch (err) {
+        window.alert(`Could not import save file: ${err.message}`);
+      } finally {
+        event.target.value = "";
+      }
+    });
   }
 
   /* -------------------------------------------------------------
@@ -1973,6 +2299,7 @@
     els.exportDataBtn.addEventListener("click", () => {
       const backupData = {
         schemaVersion: 1,
+        saveName: saveSlots.slots[saveSlots.activeId].name,
         exportedAt: new Date().toISOString(),
         settings: state.store.settings,
         progress: state.store.progress,
@@ -1983,7 +2310,8 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `vocabulary-srs-progress-${new Date().toISOString().slice(0, 10)}.json`;
+      const safeName = backupData.saveName.toLowerCase().replace(/[^a-z0-9_-]+/g, "-") || "save";
+      a.download = `vocabulary-srs-${safeName}-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
       showToast("Progress exported successfully!");
@@ -2074,6 +2402,7 @@
         saveStoredState();
         updateDashboardCounts();
         renderDeckList();
+        renderSaveSlotControls();
         showToast(`Successfully imported progress for ${count} cards!`);
       } catch (err) {
         alert(`Failed to import file: ${err.message}`);
@@ -2133,6 +2462,7 @@
         updateLearningSessionUi();
       }
       closeResetModal();
+      renderSaveSlotControls();
       showToast("Progress has been reset.");
     });
   }
@@ -2231,6 +2561,7 @@
     setupDeckBrowser();
     setupTranslateSection();
     setupSettings();
+    setupSaveSlots();
     setupTabs();
     setupKeyboardShortcuts();
 

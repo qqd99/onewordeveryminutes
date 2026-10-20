@@ -376,30 +376,14 @@ test("word off is not a master mute: manually requested word still plays", async
   assert.deepEqual(h.spoken, ["你好"]);
 });
 
-test("old saved autoSpeak preference migrates into the new Read word option", () => {
-  const first = source.indexOf("  function loadStoredState() {");
-  const last = source.indexOf("  function saveStoredState() {", first);
-  assert.ok(first > 0 && last > first);
-  const state = { store: {
-    settings: { readWords: true, readSentences: true },
-    progress: {}, lastCardId: null, currentCardId: null
-  } };
-  const stored = { settings: { autoSpeak: false, readSentences: true } };
-  const ctx = {
-    state,
-    localStorage: { getItem: () => JSON.stringify(stored) },
-    console: { warn() {} }
-  };
-  vm.runInNewContext('const STORAGE_KEY = "vocab_srs_state_v1";\n' +
-    source.slice(first, last) + '\nglobalThis.load = loadStoredState;', ctx);
-  ctx.load();
-  assert.equal(state.store.settings.readWords, false);
-  assert.equal(state.store.settings.readSentences, true);
-  assert.equal(Object.hasOwn(state.store.settings, "autoSpeak"), false);
-  stored.settings = { readWords: true, autoSpeak: false, readSentences: false };
-  ctx.load();
-  assert.equal(state.store.settings.readWords, true, "New setting takes precedence");
-  assert.equal(state.store.settings.readSentences, false);
+test("legacy autoSpeak preference migration remains supported by save normalization", () => {
+  const normalization = source.slice(
+    source.indexOf("  function normalizeSaveStore("),
+    source.indexOf("  function createSaveRegistry(")
+  );
+  assert.match(normalization, /settings\.autoSpeak/);
+  assert.match(normalization, /normalized\.settings\.readWords = settings\.autoSpeak/);
+  assert.match(normalization, /delete normalized\.settings\.autoSpeak/);
 });
 
 test("UI has no master autoplay toggle that blocks sentence-only playback", () => {

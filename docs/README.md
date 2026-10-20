@@ -150,3 +150,16 @@ Study cards no longer create the dark in-page toast popups after a quiz answer. 
 Reminder-driven card changes also no longer display the in-page **Reminder: Next card is due!** toast. If desktop/browser notifications are enabled in Settings, the optional system notification remains available. Other operational toasts (for settings, imports, errors, and manual actions) are unchanged.
 
 The v16 PWA cache is mirrored through both `web/` and `docs/`.
+
+## Multiple named save files (v17)
+
+The web app now supports separate **Save Files** in Settings, plus a quick-save selector in the top header. Your former single-browser save is automatically migrated to **Main Save** without changing any existing learning progress.
+
+- **New save:** starts with no reviewed cards, while inheriting your current learning/audio preferences.
+- **Duplicate:** creates an independent copy of the current learning progress and settings.
+- **Switch:** autosaves the old save, stops audio/reminders, and returns to the **Start learning** screen; selecting the previous save brings back its own cards, progress, quiz mode and other settings.
+- **Rename / Delete:** organize save slots. Deleting requires confirmation, and the only remaining save cannot be deleted.
+- **Export JSON:** downloads the currently selected save with its name, progress and settings.
+- **Import as new save:** opens an existing vocabulary backup JSON into its own slot without modifying the current one. The original **Import JSON** action still merges progress into the selected slot, so existing backups remain compatible.
+
+Named save slots are stored automatically in **browser localStorage** and do not sync across devices or browsers. Keep downloaded backups if you want to transfer between devices or protect against clearing browser data. All slots share the vocabulary catalog but store learning progress independently. Session start/pause status is temporary and not saved.
