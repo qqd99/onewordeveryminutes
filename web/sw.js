@@ -3,7 +3,7 @@
  * Caches application shell and vocabulary catalog for 100% offline usage.
  */
 
-const CACHE_NAME = "vocab-srs-cache-v19";
+const CACHE_NAME = "vocab-srs-cache-v20";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
@@ -12,7 +12,7 @@ const ASSETS_TO_CACHE = [
   "./translation.js",
   "./translation.js?v=19",
   "./app.js",
-  "./app.js?v=19",
+  "./app.js?v=20",
   "./srs.js",
   "./srs.js?v=19",
   "./vocabulary.json",
