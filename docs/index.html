@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=16" />
+  <link rel="stylesheet" href="style.css?v=17" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -24,6 +24,7 @@
       </a>
 
       <div class="header-actions">
+        <select id="quickSaveSelect" class="pack-select quick-save-select" aria-label="Switch learning save file"></select>
         <select id="packSelect" class="pack-select" aria-label="Select vocabulary pack"></select>
         <button id="themeToggle" class="icon-button" type="button" aria-label="Toggle dark mode" title="Toggle theme">
           🌙
@@ -467,22 +468,53 @@
         </div>
 
         <div class="settings-group">
+          <h2 class="settings-group-title">Save Files</h2>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="saveSlotSelect">Current save file</label>
+              <p>Keep separate learning progress in named saves. Switching stops the current session and returns to Start learning.</p>
+            </div>
+            <div class="setting-control">
+              <select id="saveSlotSelect" class="pack-select" aria-label="Select a learning save"></select>
+            </div>
+          </div>
+          <div class="save-slots-actions">
+            <button id="newSaveBtn" class="btn btn-secondary" type="button">＋ New save</button>
+            <button id="duplicateSaveBtn" class="btn btn-secondary" type="button">⧉ Duplicate</button>
+            <button id="renameSaveBtn" class="btn btn-secondary" type="button">✏️ Rename</button>
+            <button id="deleteSaveBtn" class="btn btn-danger" type="button">🗑 Delete</button>
+          </div>
+          <p id="activeSaveInfo" class="save-slot-info" role="status">Main Save is selected.</p>
+          <p class="save-slot-tip">Saves stay in this browser, not on GitHub. Export JSON to download the current save, or import a JSON backup as a separate save below.</p>
+        </div>
+
+        <div class="settings-group">
           <h2 class="settings-group-title">Data Backup & Compatibility</h2>
           <div class="setting-row">
             <div class="setting-info">
-              <label>Export Progress</label>
-              <p>Download a backup JSON file of all your SRS repetitions, ease, and due dates</p>
+              <label>Export current save</label>
+              <p>Download the selected save as a portable JSON file (progress and learning settings)</p>
             </div>
             <button id="exportDataBtn" class="btn btn-secondary" type="button">⬇️ Export JSON</button>
           </div>
           <div class="setting-row">
             <div class="setting-info">
-              <label>Import Progress</label>
-              <p>Restore from a backup JSON or transfer progress from the Edge extension</p>
+              <label>Import progress into current save</label>
+              <p>Merge a JSON backup into the selected save. Other named saves are unaffected.</p>
             </div>
             <div class="setting-control">
               <input type="file" id="importFileInput" accept=".json" style="display: none;" />
               <button id="importDataBtn" class="btn btn-secondary" type="button">⬆️ Import JSON</button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label>Import as a new save</label>
+              <p>Open a downloaded JSON backup in a separate named save without overwriting your current progress.</p>
+            </div>
+            <div class="setting-control">
+              <input type="file" id="importSaveFile" accept=".json,application/json" hidden />
+              <button id="importSaveBtn" class="btn btn-secondary" type="button">📂 Import as new save</button>
             </div>
           </div>
           <div class="setting-row">
@@ -513,7 +545,7 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <!-- Load Scripts -->
-  <script src="srs.js?v=16"></script>
-  <script src="app.js?v=16"></script>
+  <script src="srs.js?v=17"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>
