@@ -1063,6 +1063,37 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
+.quick-save-select {
+  max-width: 170px;
+  min-width: 110px;
+}
+
+.save-slots-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 12px 0;
+}
+
+.save-slots-actions .btn {
+  width: auto;
+  min-height: 36px;
+  padding: 8px 12px;
+}
+
+.save-slot-info {
+  color: var(--text-main);
+  font-size: 13px;
+  font-weight: 600;
+  margin: 10px 0 4px;
+}
+
+.save-slot-tip {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .settings-group {
   margin-bottom: 28px;
   padding-bottom: 24px;
