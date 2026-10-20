@@ -204,7 +204,11 @@
     if (!["chinese-to-english", "english-to-chinese"].includes(normalized.settings.learningMode)) {
       normalized.settings.learningMode = "chinese-to-english";
     }
-    normalized.settings.translationLanguage = TranslationSupport.normalizeLanguage(normalized.settings.translationLanguage);
+    normalized.settings.translationLanguage = typeof TranslationSupport !== "undefined"
+      ? TranslationSupport.normalizeLanguage(normalized.settings.translationLanguage)
+      : (["en", "vi", "fr", "es", "de", "ja", "ko", "zh-CN", "th", "id"]
+          .includes(normalized.settings.translationLanguage)
+          ? normalized.settings.translationLanguage : "en");
     return normalized;
   }
 
