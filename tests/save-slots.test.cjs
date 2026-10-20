@@ -35,12 +35,14 @@ function createHarness(legacy = null, existingSlots = null) {
     newSaveBtn: control(), duplicateSaveBtn: control(),
     renameSaveBtn: control(), deleteSaveBtn: control(),
     importSaveBtn: control(), importSaveFile: control(),
-    activeSaveInfo: control(), themeToggle: control()
+    activeSaveInfo: control(), themeToggle: control(),
+    meaningLanguageSelect: control(), translateTargetSelect: control()
   };
   const state = {
     store: {
       settings: {
         theme: "light", learningMode: "chinese-to-english", activePackId: "hsk",
+        translationLanguage: "en",
         intervalHours: 0, intervalMinutes: 15, intervalSeconds: 0,
         readWords: true, readSentences: true,
         volume: 100, wordRepeat: 2, audioEngine: "auto"
@@ -90,7 +92,7 @@ function createHarness(legacy = null, existingSlots = null) {
     'const defaultStore = JSON.parse(JSON.stringify(state.store));\n' +
     'let saveSlots = null;\n' +
     saveCode +
-    '\nglobalThis.api = { loadStoredState, saveStoredState, switchSaveSlot, addSaveSlot, renderSaveSlotControls, setupSaveSlots, normalizeSaveStore };',
+    '\nglobalThis.api = { loadStoredState, saveStoredState, switchSaveSlot, addSaveSlot, renderSaveSlotControls, setupSaveSlots, normalizeSaveStore, syncMeaningLanguageControls };',
     ctx
   );
   ctx.api.loadStoredState();
@@ -248,4 +250,21 @@ test("both quick header and Settings save controls are present", () => {
     "quickSaveSelect", "saveSlotSelect", "newSaveBtn", "duplicateSaveBtn",
     "renameSaveBtn", "deleteSaveBtn", "importSaveBtn", "importSaveFile"
   ]) assert.match(html, new RegExp('id="' + id + '"'));
+});
+
+
+test("Vietnamese meaning-language preference survives a page reload", () => {
+  const firstVisit = createHarness();
+  firstVisit.state.store.settings.translationLanguage = "vi";
+  assert.equal(firstVisit.api.saveStoredState(), true);
+
+  // Simulate reloading the app with its existing browser localStorage.
+  const nextVisit = createHarness(null, slots(firstVisit));
+  assert.equal(nextVisit.state.store.settings.translationLanguage, "vi");
+  nextVisit.api.syncMeaningLanguageControls();
+  assert.equal(nextVisit.els.meaningLanguageSelect.value, "vi");
+  assert.equal(nextVisit.els.translateTargetSelect.value, "vi");
+
+  // Guard against forgetting to hydrate the selects during init again.
+  assert.match(source, /async function init\\(\\) \\{\\s*loadStoredState\\(\\);\\s*syncMeaningLanguageControls\\(\\);/);
 });
