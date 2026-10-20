@@ -231,7 +231,7 @@
           emit("syncing", "Checking cloud saves...");
           await syncOnce();
         } catch (error) {
-          emit(error instanceof TypeError ? "offline" : "error",
+          emit(error?.name === "TypeError" ? "offline" : "error",
             "Cloud sync failed: " + error.message + ". Local saves are safe.");
         }
       })();
