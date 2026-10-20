@@ -57,3 +57,13 @@ test("both published pages expose the translated-meaning selector and helper", (
     assert.ok(fs.existsSync(path.join(root, directory, "translation.js")));
   }
 });
+
+
+test("both website publishers expose optional Supabase cloud synchronization", () => {
+  for (const directory of ["web", "docs"]) {
+    const html = fs.readFileSync(path.join(root, directory, "index.html"), "utf8");
+    assert.match(html, /cloud-sync\.js\?v=22/);
+    assert.ok(fs.existsSync(path.join(root, directory, "cloud-sync.js")));
+    assert.match(html, /id="cloudSyncStatus"/);
+  }
+});

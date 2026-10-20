@@ -177,3 +177,62 @@ For faster, more reliable downloads, the original 1,000 cards remain in `vocabul
 Open **Settings → Meaning language** to choose Vietnamese (Tiếng Việt), French, Spanish, German, Japanese, Korean, Chinese, Thai or Indonesian. English is the default. Chinese-to-meaning quizzes display translated multiple-choice meanings; meaning-to-Chinese mode translates the question prompt. The study card also translates example-sentence meanings without changing Chinese pronunciation, card IDs or SRS history.
 
 The **Translate** tab has a **To** selector linked to the same preference so sentences can be translated from Chinese to Vietnamese and other supported languages. Known word breakdown meanings are translated too. Web and Edge extension cards use the public MyMemory translation service for English meanings. Translations require internet access (unless already cached) and can be rate-limited; original English meanings remain available if a request fails. The base vocabulary data and offline English learning are unchanged.
+
+
+## Optional Supabase cloud synchronization (browser-to-browser)
+
+The web app can now sync **all named Save Files** to the same Supabase account. This is
+**opt-in**: with no Supabase configuration, the app behaves exactly as before.
+Learning continues offline through browser localStorage, and the Edge extension
+is not connected to Supabase. GitHub Pages remains a static site.
+
+### One-time Supabase project setup
+
+1. Create a Supabase project at https://supabase.com/dashboard.
+2. In **SQL Editor**, execute [supabase/schema.sql](../supabase/schema.sql).
+   This creates the user_save_snapshots table and the atomic
+   write_user_save_snapshot RPC. **Row Level Security (RLS)** restricts
+   each signed-in account to its own data.
+3. Under **Authentication → Providers**, enable Email authentication.
+   Supabase may require clicking an email confirmation link before sign-in.
+4. In your Supabase project, copy the **Project URL** and **Publishable key**
+   (sb_publishable_...) or legacy **anon** key. Supabase UI labels vary.
+5. **Never use a service-role or secret key in the browser.** These privileged
+   keys bypass RLS. Do not commit passwords or private keys to GitHub.
+6. In the website's **Settings → Optional Cloud Save Sync**, enter that project
+   URL and public key, then click **Save cloud connection**.
+7. Enter your email/password and click **Create account** (first time) or
+   **Sign in**. Configure the same project and use the same account in the
+   other browser.
+
+### What synchronizes
+
+- All named save slots, their names, the active slot, study progress, quiz
+  settings (including Vietnamese meaning language), and audio preferences.
+- Local changes upload shortly after browser saves; remote changes are checked
+  about every 30 seconds, when the page becomes visible, and when connectivity returns.
+- If a new browser's local saves differ from the cloud, choose **Download cloud
+  saves** or **Upload local saves instead**. Neither is selected automatically on
+  a conflict. Export any important saves before choosing.
+- Before downloading a cloud copy, the previous full local registry is also
+  retained under browser localStorage key vocab_srs_cloud_pre_replace_backup_v1.
+- Cloud writes use atomic revision checks. Two offline browsers cannot silently
+  overwrite each other's changes. Resolve conflicts by choosing one complete
+  set of saves; individual vocabulary histories are not merged automatically.
+- Active learning won't be interrupted by an automatic remote download;
+  pause learning to apply pending changes.
+- Signing out leaves browser-local saves untouched. Network failures and
+  cloud downtime do not stop local/offline learning.
+
+### Privacy and troubleshooting
+
+The public API key identifies the Supabase project. Saved data is restricted
+using each authenticated user's session and database RLS policies. Auth tokens
+are stored in each browser to keep users signed in after refresh. Use HTTPS,
+a trusted device and a strong password. Clearing browser storage removes local
+saves and the cached session. Supabase credentials must be entered separately
+in each browser and are not included in exported JSON saves.
+
+If syncing reports a missing table or RPC, run the SQL setup. If it reports a
+conflict, choose which version to keep after making any needed backups. Both
+web/ and docs/ ship identical app files.
