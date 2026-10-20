@@ -3,7 +3,6 @@ const els = {
   runningBadge: document.querySelector("#runningBadge"),
   startHint: document.querySelector("#startHint"),
   pack: document.querySelector("#pack"),
-  translationLanguage: document.querySelector("#translationLanguage"),
   intervalMinutes: document.querySelector("#intervalMinutes"),
   autoHideSeconds: document.querySelector("#autoHideSeconds"),
   closeAfterAnswer: document.querySelector("#closeAfterAnswer"),
@@ -290,7 +289,6 @@ function renderDashboard(data) {
   els.volumeValue.textContent = `${Math.round(Number(els.volumePercent.value) || 0)}%`;
   els.autoSpeak.checked = settings.autoSpeak !== false;
   els.readSentences.checked = settings.readSentences !== false;
-  els.translationLanguage.value = settings.translationLanguage || "en";
   renderPackOptions(packs, activePackId);
 
   els.wordStat.textContent = Number(data.stats?.total ?? vocabulary.count ?? 0).toLocaleString();
@@ -436,7 +434,6 @@ function selectedSettings() {
     volumePercent: selectedVolumePercent(),
     autoSpeak: els.autoSpeak.checked,
     readSentences: els.readSentences.checked,
-    translationLanguage: els.translationLanguage.value,
     activePackId: els.pack.value
   };
 }
@@ -488,9 +485,6 @@ els.save.addEventListener("click", async () => {
 
 els.pack.addEventListener("change", () => {
   els.feedback.textContent = "Press Save settings to switch vocabulary packs.";
-});
-els.translationLanguage.addEventListener("change", () => {
-  els.feedback.textContent = "Press Save settings to change the meaning language.";
 });
 
 els.volumePercent.addEventListener("input", () => {
