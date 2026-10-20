@@ -2548,8 +2548,33 @@
   }
 
   /* -------------------------------------------------------------
-     12. INITIALIZATION
+     12. VOCABULARY DATA & INITIALIZATION
   ------------------------------------------------------------- */
+  async function expandVocabularyCatalog(data) {
+    if (!Array.isArray(data?.packs) || !data.packs.length) {
+      throw new Error("Vocabulary catalog has no packs.");
+    }
+    for (const pack of data.packs) {
+      if (!Array.isArray(pack.cards)) throw new Error("Vocabulary pack is invalid.");
+      if (!Array.isArray(pack.cardFiles) || !pack.cardFiles.length) continue;
+
+      // Fetch chunks concurrently, preserving the ranked order in cardFiles.
+      // The original 1,000 cards stay first, with their exact IDs intact.
+      const chunks = await Promise.all(pack.cardFiles.map(async path => {
+        const response = await fetch(path);
+        if (!response.ok) throw new Error(`Could not load ${path} (HTTP ${response.status}).`);
+        const cards = await response.json();
+        if (!Array.isArray(cards)) throw new Error(`Invalid vocabulary file: ${path}`);
+        return cards;
+      }));
+      pack.cards.push(...chunks.flat());
+      if (pack.expectedCardCount && pack.cards.length !== pack.expectedCardCount) {
+        throw new Error(`Expected ${pack.expectedCardCount} words but found ${pack.cards.length}.`);
+      }
+    }
+    return data;
+  }
+
   async function init() {
     loadStoredState();
     // The first loadVoices() call ran before stored preferences were read.
@@ -2568,7 +2593,7 @@
     try {
       const response = await fetch("vocabulary.json");
       if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-      const data = await response.json();
+      const data = await expandVocabularyCatalog(await response.json());
       state.catalog = data;
 
       // Populate pack selector

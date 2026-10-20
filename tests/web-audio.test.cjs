@@ -126,16 +126,18 @@ test("web HTML exposes two independent word and sentence switches", () => {
   assert.match(source, /state\.store\.settings\.readSentences = e\.target\.checked/);
 });
 
-test("the deployed web vocabulary has English-only definitions", () => {
+test("the expanded web vocabulary preserves the original 1,000 IDs and English meanings", () => {
   const data = JSON.parse(fs.readFileSync(path.join(root, "web/vocabulary.json"), "utf8"));
   const rootData = JSON.parse(fs.readFileSync(path.join(root, "vocabulary.json"), "utf8"));
   for (const [index, pack] of data.packs.entries()) {
-    assert.equal(pack.cards.length, rootData.packs[index].cards.length);
+    const oldCards = rootData.packs[index].cards;
+    assert.equal(pack.cards.length, oldCards.length);
     for (const [cardIndex, entry] of pack.cards.entries()) {
-      assert.equal(entry.id, rootData.packs[index].cards[cardIndex].id);
-      assert.equal(entry.meaning, rootData.packs[index].cards[cardIndex].meaning);
+      assert.deepEqual(entry, oldCards[cardIndex]);
       assert.doesNotMatch(entry.meaning, /[\u3400-\u9fff]/u);
     }
+    assert.equal(pack.expectedCardCount, 10000);
+    assert.equal(pack.cardFiles.length, 6);
   }
 });
 
