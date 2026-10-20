@@ -266,5 +266,5 @@ test("Vietnamese meaning-language preference survives a page reload", () => {
   assert.equal(nextVisit.els.translateTargetSelect.value, "vi");
 
   // Guard against forgetting to hydrate the selects during init again.
-  assert.match(source, /async function init\\(\\) \\{\\s*loadStoredState\\(\\);\\s*syncMeaningLanguageControls\\(\\);/);
+  assert.ok(source.includes("  async function init() {\n    loadStoredState();\n    syncMeaningLanguageControls();"));
 });
