@@ -253,7 +253,15 @@
       state.store = cloneSaveData(saveSlots.slots[saveSlots.activeId].store);
     } catch (err) {
       console.warn("Could not load save slots:", err);
-      if (!saveSlots) saveSlots = createSaveRegistry(defaultStore);
+      if (!saveSlots) {
+        // A damaged slots index must not erase a readable legacy save.
+        try {
+          const old = localStorage.getItem(STORAGE_KEY);
+          saveSlots = createSaveRegistry(old ? JSON.parse(old) : defaultStore);
+        } catch (_) {
+          saveSlots = createSaveRegistry(defaultStore);
+        }
+      }
       state.store = cloneSaveData(saveSlots.slots[saveSlots.activeId].store);
     }
   }
@@ -493,9 +501,15 @@
           throw new Error("No matching vocabulary cards found.");
         }
         const settings = imported?.settings ?? imported?.payload?.settings ?? {};
+        const safeSettings = settings && typeof settings === "object" && !Array.isArray(settings)
+          ? settings : {};
         const importedStore = normalizeSaveStore({
-          settings: { ...state.store.settings, ...(settings && typeof settings === "object" &&
-            !Array.isArray(settings) ? settings : {}) },
+          settings: {
+            ...state.store.settings, ...safeSettings,
+            readWords: typeof safeSettings.readWords === "boolean" ? safeSettings.readWords
+              : typeof safeSettings.autoSpeak === "boolean" ? safeSettings.autoSpeak
+              : state.store.settings.readWords
+          },
           progress,
           currentCardId: imported?.currentCardId ?? imported?.payload?.currentCardId,
           lastCardId: imported?.lastCardId ?? imported?.payload?.lastCardId
@@ -2296,7 +2310,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      const safeName = backupData.saveName.toLowerCase().replace(/[^a-z0-9-_]+/g, "-") || "save";
+      const safeName = backupData.saveName.toLowerCase().replace(/[^a-z0-9_-]+/g, "-") || "save";
       a.download = `vocabulary-srs-${safeName}-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
