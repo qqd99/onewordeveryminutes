@@ -467,6 +467,51 @@
       syncActiveSaveToPage();
       showToast(`Deleted "${name}".`);
     });
+
+    els.importSaveBtn?.addEventListener("click", () => els.importSaveFile?.click());
+    els.importSaveFile?.addEventListener("change", async event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const imported = JSON.parse(await file.text());
+        const raw = imported?.progress ?? imported?.payload?.progress ??
+          imported?.chineseSrsBackupProgress ??
+          (imported?.settings || imported?.schemaVersion ? null : imported);
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+          throw new Error("No valid progress data found.");
+        }
+        const validIds = new Set((state.catalog?.packs || []).flatMap(pack =>
+          pack.cards.map(card => card.id)
+        ));
+        const progress = {};
+        for (const [id, value] of Object.entries(raw)) {
+          if (validIds.has(id) && value && typeof value === "object" && !Array.isArray(value)) {
+            progress[id] = normalizeProgress(value);
+          }
+        }
+        if (Object.keys(raw).length > 0 && Object.keys(progress).length === 0) {
+          throw new Error("No matching vocabulary cards found.");
+        }
+        const settings = imported?.settings ?? imported?.payload?.settings ?? {};
+        const importedStore = normalizeSaveStore({
+          settings: { ...state.store.settings, ...(settings && typeof settings === "object" &&
+            !Array.isArray(settings) ? settings : {}) },
+          progress,
+          currentCardId: imported?.currentCardId ?? imported?.payload?.currentCardId,
+          lastCardId: imported?.lastCardId ?? imported?.payload?.lastCardId
+        });
+        const suggested = String(imported?.saveName || file.name.replace(/\.json$/i, "") ||
+          "Imported save").slice(0, 60);
+        const label = window.prompt("Name for the imported save:", suggested);
+        if (label === null) return;
+        const id = addSaveSlot(label, importedStore);
+        if (id) switchSaveSlot(id);
+      } catch (err) {
+        window.alert(`Could not import save file: ${err.message}`);
+      } finally {
+        event.target.value = "";
+      }
+    });
   }
 
   /* -------------------------------------------------------------
@@ -2240,6 +2285,7 @@
     els.exportDataBtn.addEventListener("click", () => {
       const backupData = {
         schemaVersion: 1,
+        saveName: saveSlots.slots[saveSlots.activeId].name,
         exportedAt: new Date().toISOString(),
         settings: state.store.settings,
         progress: state.store.progress,
@@ -2250,7 +2296,8 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `vocabulary-srs-progress-${new Date().toISOString().slice(0, 10)}.json`;
+      const safeName = backupData.saveName.toLowerCase().replace(/[^a-z0-9-_]+/g, "-") || "save";
+      a.download = `vocabulary-srs-${safeName}-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
       showToast("Progress exported successfully!");
@@ -2341,6 +2388,7 @@
         saveStoredState();
         updateDashboardCounts();
         renderDeckList();
+        renderSaveSlotControls();
         showToast(`Successfully imported progress for ${count} cards!`);
       } catch (err) {
         alert(`Failed to import file: ${err.message}`);
@@ -2400,6 +2448,7 @@
         updateLearningSessionUi();
       }
       closeResetModal();
+      renderSaveSlotControls();
       showToast("Progress has been reset.");
     });
   }
@@ -2498,6 +2547,7 @@
     setupDeckBrowser();
     setupTranslateSection();
     setupSettings();
+    setupSaveSlots();
     setupTabs();
     setupKeyboardShortcuts();
 
