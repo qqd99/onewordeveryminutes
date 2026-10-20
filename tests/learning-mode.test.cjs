@@ -166,10 +166,10 @@ test("learning mode setting persists and backup import validates both modes", ()
   assert.match(settings, /learningModeSelect\.value = state\.store\.settings\.learningMode/);
 });
 
-test("invalid stored learning modes fall back to Mode 1", () => {
-  const load = section("  function loadStoredState()", "  function saveStoredState()");
-  assert.match(load, /learningMode = "chinese-to-english"/);
-  assert.match(load, /english-to-chinese/);
+test("invalid learning modes in any save fall back to Mode 1", () => {
+  const normalize = section("  function normalizeSaveStore(", "  function createSaveRegistry(");
+  assert.match(normalize, /learningMode = "chinese-to-english"/);
+  assert.match(normalize, /english-to-chinese/);
 });
 
 test("mode selector copy explicitly says audio remains Chinese", () => {
