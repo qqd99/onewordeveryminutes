@@ -135,21 +135,24 @@ test("Mode 2 choices retain source IDs for wrong-answer Forget logic", () => {
   assert.equal(wrong.isCorrect, false);
 });
 
-test("Mode 2 visual prompt is English and pinyin is hidden before answering", () => {
+test("Mode 2 displays the selected-language prompt and hides pinyin before answering", () => {
   const render = section("  function renderCard(", "  function rateCurrentCard(");
   assert.match(render, /englishToChinese \? \(card\.meaning \|\| "—"\) : card\.front/);
+  const localized = section("  let visibleTranslationGeneration = 0;", "  function renderCard(");
+  assert.match(localized, /Translating meaning…/);
+  assert.match(localized, /TranslationSupport\.localizePresentation/);
   assert.match(render, /pinyinReading\.hidden = englishToChinese/);
   assert.match(render, /buildChineseQuiz/);
   assert.match(render, /Choose the correct Chinese word/);
   assert.match(render, /exampleCard\.hidden = englishToChinese/);
 });
 
-test("Mode 2 reveals Chinese, pinyin, and English after an answer", () => {
+test("Mode 2 reveals Chinese, pinyin, and the selected meaning language after an answer", () => {
   const answer = section("  function handleQuizAnswer(", "  function presentNextCard(");
   assert.match(answer, /Answer:/);
   assert.match(answer, /state\.currentCard\.front/);
   assert.match(answer, /state\.currentCard\.reading/);
-  assert.match(answer, /state\.currentCard\.meaning/);
+  assert.match(answer, /els\.hanziTerm\.textContent \|\| visibleCardMeaning/);
   assert.match(answer, /exampleCard\.hidden = false/);
 });
 
