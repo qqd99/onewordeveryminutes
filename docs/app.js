@@ -330,13 +330,19 @@
     state.selectedChoiceId = null;
   }
 
+  // Apply the persisted preference to both dropdowns, including on a fresh load.
+  function syncMeaningLanguageControls() {
+    const target = state.store.settings.translationLanguage || "en";
+    if (els.meaningLanguageSelect) els.meaningLanguageSelect.value = target;
+    if (els.translateTargetSelect) els.translateTargetSelect.value = target;
+  }
+
   function syncActiveSaveToPage() {
     const settings = state.store.settings;
     document.documentElement.setAttribute("data-theme", settings.theme || "light");
     els.themeToggle.textContent = settings.theme === "dark" ? "☀️" : "🌙";
     if (els.learningModeSelect) els.learningModeSelect.value = settings.learningMode;
-    if (els.meaningLanguageSelect) els.meaningLanguageSelect.value = settings.translationLanguage || "en";
-    if (els.translateTargetSelect) els.translateTargetSelect.value = settings.translationLanguage || "en";
+    syncMeaningLanguageControls();
     if (els.reminderEnabled) els.reminderEnabled.checked = Boolean(settings.reminderEnabled);
     if (els.intervalHoursInput) els.intervalHoursInput.value = settings.intervalHours ?? 0;
     if (els.intervalMinutesInput) els.intervalMinutesInput.value = settings.intervalMinutes ?? 15;
@@ -2654,6 +2660,7 @@
 
   async function init() {
     loadStoredState();
+    syncMeaningLanguageControls();
     // The first loadVoices() call ran before stored preferences were read.
     // Populate the selected device voice after restoring those preferences.
     loadVoices();
