@@ -52,7 +52,6 @@
 
   const defaultStore = JSON.parse(JSON.stringify(state.store));
   let saveSlots = null;
-  let cloudSync = null;
 
   // DOM Elements cache
   const $ = (selector) => document.querySelector(selector);
@@ -278,7 +277,6 @@
   function persistSaveSlots() {
     try {
       localStorage.setItem(SAVE_SLOTS_KEY, JSON.stringify(saveSlots));
-      if (typeof cloudSync !== "undefined" && cloudSync) cloudSync.localChanged();
       return true;
     } catch (err) {
       console.warn("Could not save learning files to browser storage:", err);
@@ -290,9 +288,7 @@
     if (!saveSlots) return false;
     const slot = saveSlots.slots[saveSlots.activeId];
     if (!slot) return false;
-    const nextStore = cloneSaveData(state.store);
-    if (JSON.stringify(slot.store) === JSON.stringify(nextStore)) return true;
-    slot.store = nextStore;
+    slot.store = cloneSaveData(state.store);
     slot.updatedAt = new Date().toISOString();
     return persistSaveSlots();
   }
@@ -2561,129 +2557,6 @@
     });
   }
 
-
-  /* -------------------------------------------------------------
-     OPTIONAL SUPABASE CLOUD SAVES (WEB ONLY)
-  ------------------------------------------------------------- */
-  function applyCloudSaveRegistry(snapshot) {
-    if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot) ||
-        !snapshot.slots || typeof snapshot.slots !== "object" ||
-        Array.isArray(snapshot.slots) ||
-        JSON.stringify(snapshot).length > 4000000) {
-      throw new Error("Invalid or oversized cloud save.");
-    }
-    const entries = Object.entries(snapshot.slots);
-    if (!entries.length || entries.length > 100) {
-      throw new Error("Cloud save contains an invalid number of save slots.");
-    }
-    const slots = Object.create(null);
-    for (const [id, item] of entries) {
-      if (!/^[a-zA-Z0-9_-]{1,80}$/.test(id) || !item ||
-          typeof item !== "object" || Array.isArray(item) ||
-          !item.store || typeof item.store !== "object" ||
-          Array.isArray(item.store)) {
-        throw new Error("Invalid named save found in cloud backup.");
-      }
-      slots[id] = {
-        name: String(item.name || "Untitled save").slice(0, 60),
-        createdAt: item.createdAt || new Date().toISOString(),
-        updatedAt: item.updatedAt || new Date().toISOString(),
-        store: normalizeSaveStore(item.store)
-      };
-    }
-    if (!Object.prototype.hasOwnProperty.call(slots, snapshot.activeId)) {
-      throw new Error("Cloud save has no valid active save slot.");
-    }
-    const previous = saveSlots;
-    saveSlots = { schemaVersion: 1, activeId: snapshot.activeId, slots };
-    if (!persistSaveSlots()) {
-      saveSlots = previous;
-      throw new Error("Unable to store the downloaded saves in this browser.");
-    }
-    resetLearningForSaveSwitch();
-    state.store = cloneSaveData(slots[saveSlots.activeId].store);
-    if (state.catalog) syncActiveSaveToPage();
-    else {
-      syncMeaningLanguageControls();
-      renderSaveSlotControls();
-    }
-  }
-
-  function setupCloudSync() {
-    if (typeof createCloudSync !== "function") return;
-    const field = id => document.getElementById(id);
-    const projectUrl = field("cloudProjectUrl");
-    const publicKey = field("cloudPublishableKey");
-    const email = field("cloudEmail");
-    const password = field("cloudPassword");
-    const cloudStatus = field("cloudSyncStatus");
-    const signIn = field("cloudSignInBtn");
-    const signUp = field("cloudSignUpBtn");
-    const signOut = field("cloudSignOutBtn");
-    const syncNow = field("cloudSyncNowBtn");
-    const conflictActions = field("cloudConflictActions");
-    const saveConnection = field("cloudConfigureBtn");
-    if (!cloudStatus || !projectUrl || !publicKey) return;
-
-    cloudSync = createCloudSync({
-      getSnapshot: () => cloneSaveData(saveSlots),
-      applySnapshot: applyCloudSaveRegistry,
-      canApply: () => state.learningStatus !== "active",
-      onStatus: info => {
-        cloudStatus.textContent = (info.email ? info.email + " — " : "") + info.message;
-        const connected = Boolean(cloudSync?.getSession());
-        signIn.hidden = connected;
-        signUp.hidden = connected;
-        signOut.hidden = !connected;
-        syncNow.hidden = !connected;
-        conflictActions.hidden = info.mode !== "conflict";
-      }
-    });
-    cloudSync.init();
-    const config = cloudSync.getConfig();
-    if (config) {
-      projectUrl.value = config.url;
-      publicKey.value = config.key;
-    }
-    const account = cloudSync.getSession();
-    if (account?.user?.email) email.value = account.user.email;
-
-    const run = async operation => {
-      try { await operation(); }
-      catch (error) { cloudStatus.textContent = "Cloud sync: " + error.message; }
-    };
-
-    saveConnection.addEventListener("click", () => {
-      void run(async () => {
-        cloudSync.setConfig(projectUrl.value, publicKey.value);
-        showToast("Supabase connection saved. Sign in to begin syncing.");
-      });
-    });
-    signIn.addEventListener("click", () => void run(async () => {
-      await cloudSync.signIn(email.value, password.value);
-      password.value = "";
-    }));
-    signUp.addEventListener("click", () => void run(async () => {
-      await cloudSync.signUp(email.value, password.value);
-      password.value = "";
-    }));
-    signOut.addEventListener("click", () => cloudSync.signOut());
-    syncNow.addEventListener("click", () => void cloudSync.syncNow());
-    field("cloudUseCloudBtn").addEventListener("click", () => void run(async () => {
-      if (!window.confirm("Replace all browser-local save slots with the cloud copy? A recovery copy will be kept in this browser.")) return;
-      await cloudSync.useCloud();
-    }));
-    field("cloudUseLocalBtn").addEventListener("click", () => void run(async () => {
-      if (!window.confirm("Replace all cloud save slots with the current browser saves? Other browsers will download this copy.")) return;
-      await cloudSync.useLocal();
-    }));
-    window.addEventListener("online", () => { void cloudSync.syncNow(); });
-    document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) void cloudSync.syncNow();
-    });
-  }
-
-
   /* -------------------------------------------------------------
      11. KEYBOARD NAVIGATION & TABS
   ------------------------------------------------------------- */
@@ -2805,7 +2678,6 @@
     setupTranslateSection();
     setupSettings();
     setupSaveSlots();
-    setupCloudSync();
     setupTabs();
     setupKeyboardShortcuts();
 
