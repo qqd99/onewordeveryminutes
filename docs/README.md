@@ -177,3 +177,22 @@ For faster, more reliable downloads, the original 1,000 cards remain in `vocabul
 Open **Settings → Meaning language** to choose Vietnamese (Tiếng Việt), French, Spanish, German, Japanese, Korean, Chinese, Thai or Indonesian. English is the default. Chinese-to-meaning quizzes display translated multiple-choice meanings; meaning-to-Chinese mode translates the question prompt. The study card also translates example-sentence meanings without changing Chinese pronunciation, card IDs or SRS history.
 
 The **Translate** tab has a **To** selector linked to the same preference so sentences can be translated from Chinese to Vietnamese and other supported languages. Known word breakdown meanings are translated too. Web and Edge extension cards use the public MyMemory translation service for English meanings. Translations require internet access (unless already cached) and can be rate-limited; original English meanings remain available if a request fails. The base vocabulary data and offline English learning are unchanged.
+
+
+## When vocabulary meanings stay in English
+
+Vietnamese and other translations normally use the public Google Translate and
+MyMemory services, which may fail because of network restrictions, daily usage
+limits, or browser security policies. The web app keeps the original English
+meaning readable and shows a small **Retry translation** control instead of
+making an error message part of the vocabulary prompt. Retry sends another
+request and does not alter card IDs or learning progress.
+
+On compatible desktop browsers (such as recent Chrome or Edge versions), open
+**Settings → Meaning language**, choose **Vietnamese**, then click
+**Enable on-device translation**. The browser may download a Vietnamese language
+pack the first time. Once available, subsequent translations can work offline,
+without relying on Google/MyMemory and without creating an account. This control
+is hidden if the browser does not provide the Translator API. Other browsers
+continue using the public APIs and previously cached translations. Some words
+or phrases may still be left in English if no translator is available.
