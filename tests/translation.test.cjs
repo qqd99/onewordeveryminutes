@@ -7,11 +7,12 @@ const vm = require("node:vm");
 const root = path.join(__dirname, "..");
 const translationScript = fs.readFileSync(path.join(root, "web", "translation.js"), "utf8");
 
-function harness(translations = {}, status = 200, googleTranslations = {}, googleStatus = 503) {
+function harness(translations = {}, status = 200, googleTranslations = {}, googleStatus = 503, deviceTranslator = null) {
   const requests = [];
   const context = vm.createContext({
     URLSearchParams,
     AbortController,
+    ...(deviceTranslator ? { Translator: deviceTranslator } : {}),
     setTimeout: () => 1,
     clearTimeout: () => {},
     fetch: async url => {
@@ -183,4 +184,90 @@ test("reverse quiz shows translation progress and updates revealed answers", asy
   assert.equal(els.hanziTerm.textContent, "thoát khỏi tình thế khó khăn");
   assert.match(els.revealedMeaning.textContent, /thoát khỏi tình thế khó khăn/);
   assert.equal(reverseCard.meaning, "to get out of a predicament");
+});
+
+
+test("on-device Vietnamese translations work even when both online services fail", async () => {
+  const translations = { good: "tốt", mistake: "sai lầm", make: "làm", "Very good!": "Rất tốt!" };
+  const model = {
+    availability: async () => "available",
+    create: async () => ({ translate: async text => translations[text] || text })
+  };
+  const h = harness({}, 429, {}, 503, model);
+  const presentation = await h.api.localizePresentation(card, quiz, "vi");
+  assert.equal(presentation.card.meaning, "tốt");
+  assert.deepEqual(Array.from(presentation.quiz.choices, choice => choice.text), [
+    "sai lầm", "tốt", "làm"
+  ]);
+  assert.equal(h.requests.length, 0, "Downloaded browser model avoids third-party APIs");
+});
+
+test("browser language pack can be enabled explicitly after a click", async () => {
+  let modelsCreated = 0;
+  const progress = [];
+  const model = {
+    availability: async () => "downloadable",
+    create(options) {
+      modelsCreated++;
+      options.monitor({ addEventListener(type, callback) {
+        assert.equal(type, "downloadprogress");
+        callback({ loaded: 0.5 });
+      } });
+      return Promise.resolve({ translate: async text => text === "good" ? "tốt" : text });
+    }
+  };
+  const h = harness({}, 429, {}, 503, model);
+  assert.equal(h.api.browserTranslator(), model);
+  const enabling = h.api.enableOnDeviceTranslation("vi", "en", pct => progress.push(pct));
+  assert.equal(modelsCreated, 1, "Download starts synchronously within click handler");
+  await enabling;
+  assert.deepEqual(progress, [50]);
+  assert.equal(await h.api.translateText("good", "vi"), "tốt");
+  assert.equal(h.requests.length, 0);
+});
+
+test("unsupported on-device translation continues using online API fallback", async () => {
+  const h = harness({ good: "tốt" }, 200, {}, 503, {
+    availability: async () => "unavailable",
+    create: () => { throw new Error("Do not download automatically"); }
+  });
+  assert.equal(await h.api.translateText("good", "vi"), "tốt");
+  assert.ok(h.requests.some(request => request.provider === "mymemory"));
+});
+
+test("reverse quiz keeps original meaning readable with a separate retry indicator", async () => {
+  const source = fs.readFileSync(path.join(root, "web", "app.js"), "utf8");
+  const start = source.indexOf("  let visibleTranslationGeneration = 0;");
+  const end = source.indexOf("  function renderCard(", start);
+  const card = { id: "original", front: "出头", meaning: "to get out of a predicament" };
+  const quiz = { choices: [{ id: "correct", text: "出头" }] };
+  const state = {
+    store: { settings: { translationLanguage: "vi" } },
+    currentCard: card, currentQuiz: quiz, quizAnswered: false
+  };
+  const els = {
+    hanziTerm: { textContent: "" },
+    exampleEnglish: { textContent: "" }, revealedMeaning: { textContent: "" },
+    translationPromptStatus: { hidden: true },
+    translationPromptMessage: { textContent: "" },
+    retryMeaningTranslationBtn: { hidden: true }
+  };
+  const context = vm.createContext({
+    state, els, console,
+    TranslationSupport: {
+      normalizeLanguage: x => x,
+      localizePresentation: async () => ({ card, quiz })
+    }
+  });
+  vm.runInContext(source.slice(start, end) +
+    "\nglobalThis.localize = localizeRenderedCard;", context);
+  await context.localize(card, quiz, true);
+  assert.equal(els.hanziTerm.textContent, "to get out of a predicament",
+    "Do not inject an error label into the vocabulary meaning");
+  assert.equal(els.translationPromptStatus.hidden, false);
+  assert.equal(els.retryMeaningTranslationBtn.hidden, false);
+  assert.match(els.translationPromptMessage.textContent, /translation is not available/i);
+  state.store.settings.translationLanguage = "en";
+  await context.localize(card, quiz, true);
+  assert.equal(els.translationPromptStatus.hidden, true);
 });
