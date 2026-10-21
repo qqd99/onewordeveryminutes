@@ -53,7 +53,7 @@ test("both published pages expose the translated-meaning selector and helper", (
     const html = fs.readFileSync(path.join(root, directory, "index.html"), "utf8");
     assert.match(html, /id="meaningLanguageSelect"/);
     assert.match(html, /id="translateTargetSelect"/);
-    assert.match(html, /translation\.js\?v=21/);
+    assert.match(html, /translation\.js\?v=23/);
     assert.ok(fs.existsSync(path.join(root, directory, "translation.js")));
   }
 });
