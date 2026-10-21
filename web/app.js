@@ -1305,7 +1305,7 @@
     if (englishToChinese) {
       els.hanziTerm.textContent = visibleCardMeaning;
       if (returnedMeaning === card.meaning) {
-        showMeaningTranslationStatus("Showing the English original: Vietnamese translation is not available right now.", true);
+        showMeaningTranslationStatus("Showing the English original: translation is not available right now.", true);
       }
     }
     else for (const choice of localized.quiz.choices) {
