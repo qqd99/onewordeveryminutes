@@ -104,6 +104,10 @@
 
         <div class="term-container">
           <div class="hanzi-term" id="hanziTerm">加载中…</div>
+          <div id="translationPromptStatus" class="translation-prompt-status" role="status" hidden>
+            <span id="translationPromptMessage"></span>
+            <button id="retryMeaningTranslationBtn" class="btn btn-secondary translation-retry-btn" type="button" hidden>Retry translation</button>
+          </div>
           <div class="pinyin-reading" id="pinyinReading">loading…</div>
         </div>
 
@@ -365,6 +369,16 @@
               </select>
             </div>
           </div>
+          <div class="setting-row" id="onDeviceTranslationRow" hidden>
+            <div class="setting-info">
+              <label>On-device translation (optional)</label>
+              <p>Chrome and supported desktop browsers can download a language pack once, then translate without relying on public translation services. No account needed.</p>
+              <p id="onDeviceTranslationStatus" role="status"></p>
+            </div>
+            <div class="setting-control">
+              <button id="enableOnDeviceTranslationBtn" class="btn btn-secondary" type="button">Enable on-device translation</button>
+            </div>
+          </div>
         </div>
 
         <div class="settings-group">
@@ -590,7 +604,7 @@
 
   <!-- Load Scripts -->
   <script src="srs.js?v=19"></script>
-  <script src="translation.js?v=21"></script>
-  <script src="app.js?v=21"></script>
+  <script src="translation.js?v=23"></script>
+  <script src="app.js?v=23"></script>
 </body>
 </html>
