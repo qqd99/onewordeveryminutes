@@ -1698,3 +1698,26 @@ input:checked + .slider:before {
   color: var(--primary);
   transform: translateY(-1px);
 }
+
+/* Keep translation failures separate from the big vocabulary quiz prompt. */
+.translation-prompt-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  text-align: center;
+}
+.translation-prompt-status[hidden],
+.translation-retry-btn[hidden],
+#onDeviceTranslationRow[hidden] {
+  display: none;
+}
+.translation-retry-btn {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+}

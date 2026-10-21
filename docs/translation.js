@@ -87,9 +87,91 @@
     }, 800);
   }
 
+  // Chrome/Edge desktop may offer an on-device Translator API. A downloaded
+  // language pack works even if both public translation APIs are blocked.
+  // Starting a new download requires a user click, never a background request.
+  const deviceTranslators = new Map();
+
+  function browserTranslator() {
+    const api = root.Translator;
+    return api && typeof api.create === "function" &&
+      typeof api.availability === "function" ? api : null;
+  }
+
+  function devicePair(source, target) {
+    return JSON.stringify([source, target]);
+  }
+
+  async function readyDeviceTranslator(source, target) {
+    const api = browserTranslator();
+    if (!api) return null;
+    const key = devicePair(source, target);
+    if (deviceTranslators.has(key)) return deviceTranslators.get(key);
+    try {
+      const options = { sourceLanguage: source, targetLanguage: target };
+      if (await api.availability(options) !== "available") return null;
+      const creating = Promise.resolve(api.create(options)).catch(error => {
+        deviceTranslators.delete(key);
+        throw error;
+      });
+      deviceTranslators.set(key, creating);
+      return await creating;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function enableOnDeviceTranslation(targetLanguage, sourceLanguage = "en", onProgress) {
+    const api = browserTranslator();
+    const target = normalizeLanguage(targetLanguage);
+    if (!api) throw new Error("On-device translation is not supported by this browser.");
+    if (target === sourceLanguage) return;
+    const key = devicePair(sourceLanguage, target);
+    if (!deviceTranslators.has(key)) {
+      // create() must be invoked synchronously inside the actual user gesture
+      // when it needs to download a new language pack.
+      let creating;
+      try {
+        creating = Promise.resolve(api.create({
+          sourceLanguage, targetLanguage: target,
+          monitor(monitor) {
+            monitor.addEventListener("downloadprogress", event => {
+              if (typeof onProgress === "function") {
+                onProgress(Math.round(event.loaded * 100));
+              }
+            });
+          }
+        })).catch(error => {
+          deviceTranslators.delete(key);
+          throw error;
+        });
+      } catch (error) {
+        throw new Error("Could not start on-device translation: " + error.message);
+      }
+      deviceTranslators.set(key, creating);
+    }
+    await deviceTranslators.get(key);
+  }
+
+  async function translateOnDevice(original, source, target) {
+    const translator = await readyDeviceTranslator(source, target);
+    if (!translator) return null;
+    try {
+      const translated = String(await translator.translate(original)).trim();
+      if (translated && translated.toLocaleLowerCase() !== original.toLocaleLowerCase()) {
+        return translated;
+      }
+    } catch (_) {
+      // The installed model may be temporarily unavailable; try online next.
+    }
+    return null;
+  }
+
   // Prefer the same Google endpoint already used by the web app's Translate tab.
   // MyMemory is a fallback: its anonymous quota can be exhausted independently.
   async function requestMeaningTranslation(original, target, fromLanguage) {
+    const onDevice = await translateOnDevice(original, fromLanguage, target);
+    if (onDevice) return onDevice;
     const providers = [
       {
         url: `https://translate.googleapis.com/translate_a/single?${new URLSearchParams({
@@ -200,6 +282,7 @@
   }
 
   root.TranslationSupport = {
-    LANGUAGES, normalizeLanguage, sourceLanguage, translateText, localizePresentation
+    LANGUAGES, normalizeLanguage, sourceLanguage, translateText, localizePresentation,
+    enableOnDeviceTranslation, browserTranslator
   };
 })(globalThis);

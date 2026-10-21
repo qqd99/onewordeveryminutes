@@ -142,6 +142,12 @@
     reminderEnabled: $("#reminderEnabled"),
     learningModeSelect: $("#learningModeSelect"),
     meaningLanguageSelect: $("#meaningLanguageSelect"),
+    translationPromptStatus: $("#translationPromptStatus"),
+    translationPromptMessage: $("#translationPromptMessage"),
+    retryMeaningTranslationBtn: $("#retryMeaningTranslationBtn"),
+    onDeviceTranslationRow: $("#onDeviceTranslationRow"),
+    onDeviceTranslationStatus: $("#onDeviceTranslationStatus"),
+    enableOnDeviceTranslationBtn: $("#enableOnDeviceTranslationBtn"),
     intervalHoursInput: $("#intervalHoursInput"),
     intervalMinutesInput: $("#intervalMinutesInput"),
     intervalSecondsInput: $("#intervalSecondsInput"),
@@ -1230,6 +1236,11 @@
   }
 
   function setupLearningSessionControls() {
+    els.retryMeaningTranslationBtn?.addEventListener("click", () => {
+      if (state.currentCard && state.currentQuiz) {
+        void localizeRenderedCard(state.currentCard, state.currentQuiz, isEnglishToChineseMode());
+      }
+    });
     if (els.startLearningBtn) {
       els.startLearningBtn.addEventListener("click", startLearning);
     }
@@ -1245,14 +1256,24 @@
   // Only presentation text is translated; source cards and quiz IDs are immutable.
   let visibleTranslationGeneration = 0;
   let visibleCardMeaning = "";
+  function showMeaningTranslationStatus(message, canRetry = false) {
+    if (!els.translationPromptStatus) return;
+    els.translationPromptStatus.hidden = !message;
+    if (els.translationPromptMessage) els.translationPromptMessage.textContent = message;
+    if (els.retryMeaningTranslationBtn) els.retryMeaningTranslationBtn.hidden = !canRetry;
+  }
+
   async function localizeRenderedCard(card, quiz, englishToChinese) {
     const generation = ++visibleTranslationGeneration;
     const target = TranslationSupport.normalizeLanguage(state.store.settings.translationLanguage);
     if (!card || !quiz) return;
 
     visibleCardMeaning = card.meaning || "—";
-    if (englishToChinese) els.hanziTerm.textContent = target === "en"
-      ? visibleCardMeaning : "Translating meaning…";
+    showMeaningTranslationStatus("");
+    if (englishToChinese) {
+      els.hanziTerm.textContent = target === "en"
+        ? visibleCardMeaning : "Translating meaning…";
+    }
     else for (const choice of quiz.choices) {
       const button = [...els.choicesGrid.querySelectorAll(".choice-btn")]
         .find(element => element.dataset.choiceId === choice.id);
@@ -1267,15 +1288,26 @@
     }
     if (target === "en") return;
 
-    const localized = await TranslationSupport.localizePresentation(card, quiz, target, "en", !englishToChinese, !englishToChinese);
+    let localized;
+    try {
+      localized = await TranslationSupport.localizePresentation(
+        card, quiz, target, "en", !englishToChinese, !englishToChinese
+      );
+    } catch (error) {
+      console.warn("Could not translate the vocabulary meaning:", error);
+      localized = { card, quiz };
+    }
     if (generation !== visibleTranslationGeneration || state.currentCard !== card ||
         state.currentQuiz !== quiz || state.store.settings.translationLanguage !== target) return;
 
     const returnedMeaning = localized.card.meaning || card.meaning || "—";
-    visibleCardMeaning = returnedMeaning === card.meaning
-      ? `Translation unavailable (English): ${returnedMeaning}`
-      : returnedMeaning;
-    if (englishToChinese) els.hanziTerm.textContent = visibleCardMeaning;
+    visibleCardMeaning = returnedMeaning;
+    if (englishToChinese) {
+      els.hanziTerm.textContent = visibleCardMeaning;
+      if (returnedMeaning === card.meaning) {
+        showMeaningTranslationStatus("Showing the English original: translation is not available right now.", true);
+      }
+    }
     else for (const choice of localized.quiz.choices) {
       const button = [...els.choicesGrid.querySelectorAll(".choice-btn")]
         .find(element => element.dataset.choiceId === choice.id);
@@ -2207,6 +2239,41 @@
         if (state.currentCard && state.currentQuiz) {
           void localizeRenderedCard(state.currentCard, state.currentQuiz, isEnglishToChineseMode());
         }
+      });
+    }
+    // On-device translation is supported only by certain desktop browsers.
+    // Creating the translator may require a user gesture to download the pack.
+    if (els.onDeviceTranslationRow) {
+      const supported = typeof TranslationSupport.browserTranslator === "function" &&
+        Boolean(TranslationSupport.browserTranslator());
+      els.onDeviceTranslationRow.hidden = !supported;
+      els.enableOnDeviceTranslationBtn?.addEventListener("click", () => {
+        const target = TranslationSupport.normalizeLanguage(state.store.settings.translationLanguage);
+        if (target === "en") {
+          els.onDeviceTranslationStatus.textContent = "Select Vietnamese or another meaning language first.";
+          return;
+        }
+        els.onDeviceTranslationStatus.textContent = "Preparing the language pack…";
+        let pending;
+        try {
+          // This call must start synchronously from the click event.
+          pending = TranslationSupport.enableOnDeviceTranslation(target, "en", progress => {
+            els.onDeviceTranslationStatus.textContent = `Downloading language pack: ${progress}%`;
+          });
+        } catch (error) {
+          els.onDeviceTranslationStatus.textContent = error.message;
+          return;
+        }
+        Promise.resolve(pending).then(() => {
+          els.onDeviceTranslationStatus.textContent =
+            "On-device translation is ready. Meanings can be translated offline.";
+          if (state.currentCard && state.currentQuiz) {
+            void localizeRenderedCard(state.currentCard, state.currentQuiz, isEnglishToChineseMode());
+          }
+        }).catch(error => {
+          els.onDeviceTranslationStatus.textContent =
+            "Could not enable on-device translation: " + error.message;
+        });
       });
     }
     // Learning mode
