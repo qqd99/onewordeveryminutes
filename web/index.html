@@ -526,61 +526,6 @@
           <p class="save-slot-tip">Saves stay in this browser, not on GitHub. Export JSON to download the current save, or import a JSON backup as a separate save below.</p>
         </div>
 
-
-        <div class="settings-group">
-          <h2 class="settings-group-title">Optional Cloud Save Sync (Supabase)</h2>
-          <p class="save-slot-tip">Share all named save files between browsers. Offline learning always saves locally. Set up the Supabase database first (see the README); use only the public publishable/anon key, never a secret key.</p>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label for="cloudProjectUrl">Supabase project URL</label>
-              <p>Example: https://your-project.supabase.co</p>
-            </div>
-            <div class="setting-control">
-              <input id="cloudProjectUrl" class="pack-select" type="url" inputmode="url" autocomplete="url" placeholder="https://project.supabase.co" />
-            </div>
-          </div>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label for="cloudPublishableKey">Publishable / anon key</label>
-              <p>The public browser key from your Supabase project.</p>
-            </div>
-            <div class="setting-control">
-              <input id="cloudPublishableKey" class="pack-select" type="text" autocomplete="off" spellcheck="false" placeholder="sb_publishable_..." />
-            </div>
-          </div>
-          <button id="cloudConfigureBtn" class="btn btn-secondary" type="button">Save cloud connection</button>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label for="cloudEmail">Account email</label>
-              <p>Use the same Supabase account in each browser.</p>
-            </div>
-            <div class="setting-control">
-              <input id="cloudEmail" class="pack-select" type="email" autocomplete="username" placeholder="you@example.com" />
-            </div>
-          </div>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label for="cloudPassword">Password</label>
-              <p>Passwords are sent only to Supabase Auth and are not stored in save files.</p>
-            </div>
-            <div class="setting-control">
-              <input id="cloudPassword" class="pack-select" type="password" autocomplete="current-password" />
-            </div>
-          </div>
-          <div class="save-slots-actions">
-            <button id="cloudSignInBtn" class="btn btn-primary" type="button">Sign in</button>
-            <button id="cloudSignUpBtn" class="btn btn-secondary" type="button">Create account</button>
-            <button id="cloudSignOutBtn" class="btn btn-secondary" type="button" hidden>Sign out</button>
-            <button id="cloudSyncNowBtn" class="btn btn-secondary" type="button" hidden>Sync now</button>
-          </div>
-          <p id="cloudSyncStatus" class="save-slot-info" role="status" aria-live="polite">Cloud sync is off. All saves are local.</p>
-          <div id="cloudConflictActions" class="save-slots-actions" hidden>
-            <button id="cloudUseCloudBtn" class="btn btn-secondary" type="button">Download cloud saves</button>
-            <button id="cloudUseLocalBtn" class="btn btn-danger" type="button">Upload local saves instead</button>
-          </div>
-          <p class="save-slot-tip">On first sign-in from a second browser, choose which saves to keep if the local copy differs. Later changes sync automatically when online. If both browsers edit while offline, sync pauses for your choice rather than discarding progress.</p>
-        </div>
-
         <div class="settings-group">
           <h2 class="settings-group-title">Vocabulary Sources</h2>
           <p class="save-slot-tip">The 10,000-word catalog includes 9,000 frequency-ranked entries and example sentences adapted from Zhongdex by SayMei and CC-CEDICT, licensed under CC BY-SA 4.0.
@@ -646,7 +591,6 @@
   <!-- Load Scripts -->
   <script src="srs.js?v=19"></script>
   <script src="translation.js?v=21"></script>
-  <script src="cloud-sync.js?v=22"></script>
-  <script src="app.js?v=22"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>
