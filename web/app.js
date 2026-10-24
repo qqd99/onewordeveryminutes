@@ -1325,7 +1325,10 @@
     let localized;
     try {
       localized = await TranslationSupport.localizePresentation(
-        card, quiz, target, "en", !englishToChinese, !englishToChinese
+        card, quiz, target,
+        TranslationSupport.sourceLanguage(state.activePack),
+        !englishToChinese, !englishToChinese,
+        state.activePack?.cards || []
       );
     } catch (error) {
       console.warn("Could not translate the vocabulary meaning:", error);
@@ -1339,7 +1342,7 @@
     if (englishToChinese) {
       els.hanziTerm.textContent = visibleCardMeaning;
       if (returnedMeaning === card.meaning) {
-        showMeaningTranslationStatus("Showing the English original: translation is not available right now.", true);
+        showMeaningTranslationStatus("Direct translation unavailable. Showing the original English definition.", true);
       }
     }
     else for (const choice of localized.quiz.choices) {
@@ -1994,6 +1997,12 @@
     return result;
   }
 
+  async function translateLearningWord(word, target, englishFallback = "") {
+    const source = TranslationSupport.sourceLanguage(state.activePack);
+    const translated = await TranslationSupport.translateText(word, target, source);
+    return translated && translated !== word ? translated : englishFallback;
+  }
+
   function segmentChineseText(text) {
     if (!text) return [];
     if (typeof Intl !== "undefined" && Intl.Segmenter) {
@@ -2055,7 +2064,7 @@
             return {
               word: w,
               pinyin: card.reading || "",
-              meaning: await TranslationSupport.translateText(card.meaning || "", target, "en"),
+              meaning: await translateLearningWord(w, target, card.meaning || ""),
               isHsk: true
             };
           }
@@ -2064,7 +2073,7 @@
             return {
               word: w,
               pinyin: commonWords[w].reading,
-              meaning: await TranslationSupport.translateText(commonWords[w].meaning, target, "en"),
+              meaning: await translateLearningWord(w, target, commonWords[w].meaning),
               isHsk: false
             };
           }
@@ -2291,7 +2300,8 @@
         let pending;
         try {
           // This call must start synchronously from the click event.
-          pending = TranslationSupport.enableOnDeviceTranslation(target, "en", progress => {
+          pending = TranslationSupport.enableOnDeviceTranslation(
+            target, TranslationSupport.sourceLanguage(state.activePack), progress => {
             els.onDeviceTranslationStatus.textContent = `Downloading language pack: ${progress}%`;
           });
         } catch (error) {
