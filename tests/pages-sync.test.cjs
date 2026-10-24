@@ -57,3 +57,14 @@ test("both published pages expose the translated-meaning selector and helper", (
     assert.ok(fs.existsSync(path.join(root, directory, "translation.js")));
   }
 });
+
+test("both published pages allow ten word repetitions", () => {
+  for (const directory of ["web", "docs"]) {
+    const html = fs.readFileSync(path.join(root, directory, "index.html"), "utf8");
+    const app = fs.readFileSync(path.join(root, directory, "app.js"), "utf8");
+    assert.ok(html.includes('id="wordRepeatCount" class="input-number" min="1" max="10"'));
+    assert.ok(html.includes("app.js?v=26"));
+    assert.ok(app.includes("const count = Math.min(10, Math.max(1, Math.round(Number(repeat) || 2)));"));
+    assert.ok(!app.includes("const count = Math.min(5, Math.max(1, Math.round(Number(repeat) || 2)));"));
+  }
+});

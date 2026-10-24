@@ -7,7 +7,7 @@ const vm = require("node:vm");
 const root = path.join(__dirname, "..");
 const dir = path.join(root, "web");
 const manifest = JSON.parse(fs.readFileSync(path.join(dir, "vocabulary.json"), "utf8"));
-const previous = JSON.parse(fs.readFileSync(path.join(root, "vocabulary.json"), "utf8"));
+const previous = JSON.parse(fs.readFileSync(path.join(root, "docs/vocabulary.json"), "utf8"));
 const cards = manifest.packs[0].cards;
 const shards = manifest.packs[0].cardFiles.map(name =>
   JSON.parse(fs.readFileSync(path.join(dir, name), "utf8"))
@@ -26,7 +26,7 @@ test("the GitHub Pages catalog contains exactly 10,000 unique Chinese cards", ()
   assert.equal(new Set(all.map(card => card.front)).size, 10000);
 });
 
-test("all original cards remain exactly unchanged for existing SRS saves", () => {
+test("both published catalogs agree on original card IDs for existing SRS saves", () => {
   assert.deepEqual(cards, previous.packs[0].cards);
   assert.equal(manifest.packs[0].id, previous.packs[0].id);
 });

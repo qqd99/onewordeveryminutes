@@ -126,11 +126,11 @@ test("web HTML exposes two independent word and sentence switches", () => {
   assert.match(source, /state\.store\.settings\.readSentences = e\.target\.checked/);
 });
 
-test("the expanded web vocabulary preserves the original 1,000 IDs and English meanings", () => {
+test("web vocabulary matches the published docs catalog and keeps English meanings", () => {
   const data = JSON.parse(fs.readFileSync(path.join(root, "web/vocabulary.json"), "utf8"));
-  const rootData = JSON.parse(fs.readFileSync(path.join(root, "vocabulary.json"), "utf8"));
+  const publishedCopy = JSON.parse(fs.readFileSync(path.join(root, "docs/vocabulary.json"), "utf8"));
   for (const [index, pack] of data.packs.entries()) {
-    const oldCards = rootData.packs[index].cards;
+    const oldCards = publishedCopy.packs[index].cards;
     assert.equal(pack.cards.length, oldCards.length);
     for (const [cardIndex, entry] of pack.cards.entries()) {
       assert.deepEqual(entry, oldCards[cardIndex]);
@@ -457,4 +457,50 @@ test("two-repeat speech behavior remains unchanged", async () => {
   const h = createAudioHarness({ readSentences: false, wordRepeat: 2 });
   await h.api.playCardSequence(card);
   assert.deepEqual(h.spoken, ["你好", "你好"]);
+});
+
+test("Word repeat count 10 plays the word exactly ten times online", async () => {
+  const h = createAudioHarness({ wordRepeat: 10, readSentences: false });
+  await h.api.playCardSequence(card);
+  assert.equal(h.spoken.length, 1, "short repeated words should use one audio request");
+  assert.equal((h.spoken[0].match(/你好/g) || []).length, 10);
+  assert.deepEqual(h.toasts, []);
+});
+
+test("Word repeat count 10 plays the word exactly ten times with native speech", async () => {
+  const h = createNativeHarness({ wordRepeat: 10, readSentences: false });
+  await h.api.playCardSequence(card);
+  assert.equal(h.nativeSpoken.length, 1);
+  assert.equal((h.nativeSpoken[0].match(/你好/g) || []).length, 10);
+  assert.deepEqual(h.onlineSpoken, []);
+});
+
+test("Word repeat count 10 also applies to example sentences", async () => {
+  const h = createAudioHarness({ wordRepeat: 10, readSentences: true });
+  await h.api.playCardSequence(card);
+  assert.equal(h.spoken.length, 2);
+  assert.equal((h.spoken[0].match(/你好/g) || []).length, 10);
+  assert.equal((h.spoken[1].match(/你好，朋友/g) || []).length, 10);
+});
+
+test("manual pronunciation honors ten repetitions", async () => {
+  const h = createNativeHarness({ wordRepeat: 10 });
+  assert.equal(await h.api.speak(card.front, { lang: "zh-CN", repeat: 10 }), true);
+  assert.equal(h.nativeSpoken.length, 1);
+  assert.equal((h.nativeSpoken[0].match(/你好/g) || []).length, 10);
+});
+
+test("ten-repeat native speech can fall back to one online recording", async () => {
+  const h = createNativeHarness({ wordRepeat: 10, failFirst: true });
+  await h.api.playCardSequence(card);
+  assert.equal(h.nativeSpoken.length, 1);
+  assert.equal(h.onlineSpoken.length, 1);
+  assert.equal((h.onlineSpoken[0].match(/你好/g) || []).length, 10);
+});
+
+test("settings field and imported backups allow ten repeats", () => {
+  const html = fs.readFileSync(path.join(root, "web/index.html"), "utf8");
+  assert.ok(html.includes('id="wordRepeatCount" class="input-number" min="1" max="10"'));
+  assert.ok(source.includes("state.store.settings.wordRepeat = Math.min(10, Math.round(repeats));"));
+  assert.ok(source.includes("const count = Math.min(10, Math.max(1, Math.round(Number(repeat) || 2)));"));
 });
