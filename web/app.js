@@ -688,7 +688,7 @@
     (text, lang) => `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=gtx&tl=${encodeURIComponent(lang)}&q=${encodeURIComponent(text)}`
   ];
 
-  function playOnlineOnce(url, generation, volume) {
+  function playOnlineOnce(url, generation, volume, maxDurationMs = 45000) {
     return new Promise(resolve => {
       if (!isCurrentAudio(generation)) { resolve(false); return; }
 
@@ -718,7 +718,7 @@
         if (finished || playbackWatchdog !== null) return;
         clearTimeout(startWatchdog);
         // A correctly playing sentence can last much longer than 3 seconds.
-        playbackWatchdog = setTimeout(() => settle(false), 45000);
+        playbackWatchdog = setTimeout(() => settle(false), maxDurationMs);
       };
       // Skip blocked or hung providers quickly, but never cut off healthy audio.
       const startWatchdog = setTimeout(() => settle(false), 3200);
@@ -747,7 +747,9 @@
       let played = false;
       for (const provider of providers) {
         if (!isCurrentAudio(generation)) return false;
-        played = await playOnlineOnce(provider(clean, lang), generation, volume);
+        // Long repeated examples can legitimately exceed the default playback timeout.
+        const durationMs = Math.min(180000, Math.max(45000, clean.length * 1400));
+        played = await playOnlineOnce(provider(clean, lang), generation, volume, durationMs);
         if (played) break;
       }
       if (!played) return false;
@@ -794,7 +796,10 @@
         started = true;
       };
       utterance.onend = () => settle(true);
-      utterance.onerror = () => settle(false);
+      utterance.onerror = (event) => {
+        if (isCurrentAudio(generation)) console.warn("Device speech synthesis failed:", event?.error || "unknown error");
+        settle(false);
+      };
 
       // Attempt native playback immediately. Recover promptly if the browser
       // never starts, rather than waiting five seconds before trying online.
@@ -803,11 +808,12 @@
           settle(false);
           if (isCurrentAudio(generation)) recoverSpeechSynthesis();
         }
-      }, 2000);
+      }, 5000);
       const finishWatchdog = setTimeout(() => {
         settle(false);
         if (isCurrentAudio(generation)) recoverSpeechSynthesis();
-      }, Math.min(45000, Math.max(12000, text.length * 650)));
+      }, Math.min(180000, Math.max(35000,
+        Math.ceil(text.length * 1200 / Math.max(0.5, utterance.rate)))));
 
       try {
         window.speechSynthesis.speak(utterance);
@@ -849,41 +855,41 @@
     const engine = state.store.settings.audioEngine || "auto";
     const count = Math.min(10, Math.max(1, Math.round(Number(repeat) || 2)));
 
-    // Bundle 3–10 repeats into one utterance/online recording when short enough.
-    // Otherwise every new asynchronous speak() or online request can fail even
-    // after the first two repetitions have already played successfully.
-    const bundled = count >= 3 ? buildRepeatedSpeechText(text, lang, count) : "";
-    if (bundled && bundled.length <= 180) {
-      let played = false;
-      if (engine !== "online") {
-        played = await speakTextNative(bundled, { lang, repeat: 1, generation });
-      }
-      if (!played && isCurrentAudio(generation) && engine !== "speechSynthesis") {
-        played = await playOnlineAudio(bundled, { lang, repeat: 1, generation });
-      }
-      return played && isCurrentAudio(generation);
-    }
-
-    // Keep individual requests for 1–2 repeats and unusually long examples;
-    // preserve the already-successful repeats if a later provider fails.
+    // Long 10-repeat utterances can time out or be rejected by online TTS.
+    // Keep each recording to at most five repeats, splitting long sentences
+    // into smaller batches without changing the configured total.
+    const phrase = String(text).trim().replace(/[。！？!?.,，、；;]+$/u, "") || String(text).trim();
+    const maxBatch = Math.min(5, Math.max(1, Math.floor(120 / (phrase.length + 2))));
     let completed = 0;
-    for (let index = 0; index < count; index += 1) {
+    while (completed < count) {
       if (!isCurrentAudio(generation)) return false;
-      let succeeded = false;
-      if (engine !== "online") {
-        succeeded = await speakTextNative(text, { lang, repeat: 1, generation });
-      }
-      if (!succeeded && isCurrentAudio(generation) && engine !== "speechSynthesis") {
-        succeeded = await playOnlineAudio(text, { lang, repeat: 1, generation });
-      }
-      if (!succeeded) {
-        if (completed > 0 && isCurrentAudio(generation)) {
-          console.warn(`Pronunciation ended after ${completed} of ${count} repetitions.`);
+      const remaining = count - completed;
+      const batchesLeft = Math.ceil(remaining / maxBatch);
+      const batchCount = Math.min(maxBatch, Math.ceil(remaining / batchesLeft));
+      const bundled = batchCount >= 3 ? buildRepeatedSpeechText(text, lang, batchCount) : "";
+      const requests = bundled ? [bundled] : Array(batchCount).fill(text);
+
+      for (let index = 0; index < requests.length; index += 1) {
+        if (!isCurrentAudio(generation)) return false;
+        const request = requests[index];
+        let played = false;
+        if (engine !== "online") {
+          played = await speakTextNative(request, { lang, repeat: 1, generation });
         }
-        return false;
+        if (!played && isCurrentAudio(generation) && engine !== "speechSynthesis") {
+          played = await playOnlineAudio(request, { lang, repeat: 1, generation });
+        }
+        if (!played) {
+          if (completed > 0 && isCurrentAudio(generation)) {
+            console.warn(`Pronunciation ended after ${completed} of ${count} repetitions.`);
+          }
+          return false;
+        }
+        if (!bundled) completed += 1;
+        if (!bundled && completed < count) await new Promise(resolve => setTimeout(resolve, 250));
       }
-      completed += 1;
-      if (index + 1 < count) await new Promise(resolve => setTimeout(resolve, 250));
+      if (bundled) completed += batchCount;
+      if (bundled && completed < count) await new Promise(resolve => setTimeout(resolve, 250));
     }
     return isCurrentAudio(generation);
   }

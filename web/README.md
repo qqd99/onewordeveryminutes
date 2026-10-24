@@ -199,7 +199,7 @@ or phrases may still be left in English if no translator is available.
 
 ## Stable repetition counts (v24)
 
-When **Word repeat count** is set to 3–10, short Chinese words and example sentences are pronounced using **one speech request with natural punctuation pauses**. This avoids the common browser and online-TTS failure where the first two readings play, later asynchronous speech requests fail, and the app reports *Word audio unavailable*. Native Web Speech and online fallback both use the same repeated Chinese text; a failed native batch can fall back to one online recording rather than making five unrelated requests. Counts of 1 or 2 retain the existing per-repeat behavior. Very long text is kept on the segmented path to avoid provider length limits.
+For **Word repeat count** values from 3 to 10, short Chinese words and example sentences use **small groups of up to five repetitions per speech request**, with natural punctuation pauses. This avoids the common browser and online-TTS failure where the first two readings play, later asynchronous speech requests fail, and the app reports *Word audio unavailable*. Native Web Speech and online fallback both use the same repeated Chinese text; a failed native batch can fall back to one online recording rather than making five unrelated requests. Counts of 1 or 2 retain the existing per-repeat behavior. Very long text is kept on the segmented path to avoid provider length limits.
 
 Changing cards or pausing still cancels the current reading. The v24 service-worker cache and assets are synchronized in both `web/` and `docs/`.
 
@@ -214,3 +214,7 @@ For other learning packs, the source language is resolved from the pack's `langu
 **Word repeat count** supports integers from 1 to 10. The web player, manual pronunciation, saved settings, and imported backups use the selected number instead of stopping at five. The PWA cache is updated so existing installations retrieve the corrected playback code.
 
 The maintained application is the standalone website in `web/` (with `docs/` kept in sync for branch-based Pages). Browser-extension-only source files have been removed; the website and offline PWA require no extension.
+
+## Automatic speech reliability (v27)
+
+Automatic reading now divides 6–10 repetitions into batches of at most five, and long example sentences into even smaller batches. This avoids lengthy native utterances and online TTS requests that can fail while reading. Native speech completion and online audio duration limits now account for slower/longer readings. Manual **Hear word** and automatic card playback use the same batching logic; interruption by a new card still cancels stale playback.
