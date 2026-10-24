@@ -165,6 +165,7 @@ test("reverse quiz shows translation progress and updates revealed answers", asy
     state, els,
     TranslationSupport: {
       normalizeLanguage: language => language,
+      sourceLanguage: () => "zh-CN",
       localizePresentation: () => new Promise(resolve => { resolveTranslation = resolve; })
     }
   });
@@ -256,6 +257,7 @@ test("reverse quiz keeps original meaning readable with a separate retry indicat
     state, els, console,
     TranslationSupport: {
       normalizeLanguage: x => x,
+      sourceLanguage: () => "zh-CN",
       localizePresentation: async () => ({ card, quiz })
     }
   });
@@ -266,8 +268,119 @@ test("reverse quiz keeps original meaning readable with a separate retry indicat
     "Do not inject an error label into the vocabulary meaning");
   assert.equal(els.translationPromptStatus.hidden, false);
   assert.equal(els.retryMeaningTranslationBtn.hidden, false);
-  assert.match(els.translationPromptMessage.textContent, /translation is not available/i);
+  assert.match(els.translationPromptMessage.textContent, /translation unavailable/i);
   state.store.settings.translationLanguage = "en";
   await context.localize(card, quiz, true);
   assert.equal(els.translationPromptStatus.hidden, true);
+});
+
+
+test("active Chinese learning pack supplies Chinese source, not its English definition language", () => {
+  const h = harness();
+  assert.equal(h.api.sourceLanguage({
+    language: "Chinese", languageCode: "zh-CN",
+    translationLanguage: "English", speechLang: "zh-CN"
+  }), "zh-CN");
+  assert.equal(h.api.sourceLanguage({
+    language: "Chinese", translationLanguage: "English"
+  }), "zh-CN");
+  assert.equal(h.api.sourceLanguage({ languageCode: "ja", translationLanguage: "English" }), "ja");
+});
+
+test("Chinese cards and all answer meanings translate directly from Chinese to Vietnamese", async () => {
+  const h = harness({
+    "好": "tốt", "错": "sai lầm", "做": "làm", "很好": "rất tốt"
+  });
+  const sourcedQuiz = {
+    correctChoiceId: "correct",
+    choices: [
+      { id: "wrong-1", cardId: "wrong-cuo", text: "mistake", isCorrect: false },
+      { id: "correct", cardId: card.id, text: "good", isCorrect: true },
+      { id: "wrong-2", cardId: "wrong-zuo", text: "make", isCorrect: false }
+    ]
+  };
+  const wordCards = [card, { id: "wrong-cuo", front: "错" }, { id: "wrong-zuo", front: "做" }];
+  const original = JSON.stringify({ card, sourcedQuiz, wordCards });
+  const result = await h.api.localizePresentation(
+    card, sourcedQuiz, "vi", "zh-CN", true, true, wordCards
+  );
+  assert.equal(result.card.meaning, "tốt");
+  assert.equal(result.card.example.meaning, "rất tốt");
+  assert.deepEqual(Array.from(result.quiz.choices, choice => choice.text),
+    ["sai lầm", "tốt", "làm"]);
+  assert.deepEqual(Array.from(result.quiz.choices, choice => choice.cardId),
+    ["wrong-cuo", card.id, "wrong-zuo"]);
+  assert.equal(JSON.stringify({ card, sourcedQuiz, wordCards }), original);
+  assert.deepEqual(new Set(h.requests.map(request => request.source)),
+    new Set(["好", "错", "做", "很好"]));
+  assert.ok(h.requests.every(request => request.languagePair === "zh-CN|vi"));
+  assert.ok(!h.requests.some(request => ["good", "mistake", "make", "Very good!"].includes(request.source)));
+});
+
+test("Mode 2 English prompt meaning comes directly from the underlying Chinese card", async () => {
+  const h = harness({ "出头": "vươn lên" });
+  const c = { id: "rise", front: "出头", meaning: "to get out of a predicament",
+    example: { text: "他终于出头了。", meaning: "He finally succeeded." } };
+  const reverse = { choices: [
+    { id: "correct", cardId: "rise", text: "出头", isCorrect: true },
+    { id: "wrong", cardId: "other", text: "喇叭", isCorrect: false }
+  ] };
+  const out = await h.api.localizePresentation(c, reverse, "vi", "zh-CN", false, false);
+  assert.equal(out.card.meaning, "vươn lên");
+  assert.equal(out.quiz, reverse);
+  assert.equal(out.card.example.meaning, c.example.meaning);
+  assert.ok(h.requests.every(request => request.source === "出头" &&
+    request.languagePair === "zh-CN|vi"));
+});
+
+test("failed direct translation preserves original English definitions, not untranslated Chinese", async () => {
+  const h = harness({}, 429);
+  const q = {
+    choices: [
+      { id: "wrong", cardId: "other", text: "mistake", isCorrect: false },
+      { id: "correct", cardId: card.id, text: "good", isCorrect: true }
+    ]
+  };
+  const out = await h.api.localizePresentation(card, q, "vi", "zh-CN", true, true,
+    [card, { id: "other", front: "错" }]);
+  assert.equal(out.card.meaning, "good");
+  assert.equal(out.card.example.meaning, "Very good!");
+  assert.deepEqual(Array.from(out.quiz.choices, choice => choice.text), ["mistake", "good"]);
+  assert.ok(h.requests.every(request => request.languagePair === "zh-CN|vi"));
+});
+
+test("identical Chinese-to-Vietnamese translations keep English quiz alternatives", async () => {
+  const h = harness({ "好": "tốt", "错": "tốt" });
+  const q = { choices: [
+    { id: "correct", cardId: card.id, text: "good", isCorrect: true },
+    { id: "wrong", cardId: "cuo", text: "mistake", isCorrect: false }
+  ] };
+  const out = await h.api.localizePresentation(card, q, "vi", "zh-CN", true, false,
+    [card, { id: "cuo", front: "错" }]);
+  assert.equal(out.quiz, q);
+  assert.equal(out.card.meaning, "good");
+});
+
+test("on-device translator is requested for Chinese-to-Vietnamese, not English-to-Vietnamese", async () => {
+  const pairs = [];
+  const model = {
+    availability: async options => {
+      pairs.push(options);
+      return "available";
+    },
+    create: async () => ({ translate: async text => text === "好" ? "tốt" : text })
+  };
+  const h = harness({}, 429, {}, 503, model);
+  assert.equal(await h.api.translateText("好", "vi", "zh-CN"), "tốt");
+  assert.ok(pairs.some(pair => pair.sourceLanguage === "zh-CN" &&
+    pair.targetLanguage === "vi"));
+  assert.equal(h.requests.length, 0);
+});
+
+test("Translate tab's known-word breakdown uses source word rather than English definition", () => {
+  const app = fs.readFileSync(path.join(root, "web", "app.js"), "utf8");
+  assert.match(app, /TranslationSupport\.sourceLanguage\(state\.activePack\)/);
+  assert.match(app, /translateLearningWord\(w, target, card\.meaning \|\| ""\)/);
+  assert.doesNotMatch(app, /TranslationSupport\.translateText\(card\.meaning \|\| "", target, "en"\)/);
+  assert.match(app, /TranslationSupport\.enableOnDeviceTranslation\(\s*target, TranslationSupport\.sourceLanguage\(state\.activePack\)/);
 });
