@@ -458,3 +458,74 @@ test("two-repeat speech behavior remains unchanged", async () => {
   await h.api.playCardSequence(card);
   assert.deepEqual(h.spoken, ["你好", "你好"]);
 });
+
+
+test("setting Word repeat count to 10 plays exactly ten Chinese words online", async () => {
+  const h = createAudioHarness({ wordRepeat: 10, readSentences: false });
+  await h.api.playCardSequence(card);
+  assert.equal(h.spoken.length, 2, "ten repeats use two stable five-repeat batches");
+  assert.equal(h.spoken.reduce((n, text) => n + (text.match(/你好/g) || []).length, 0), 10);
+  assert.deepEqual(h.toasts, []);
+});
+
+test("setting Word repeat count to 10 plays exactly ten Chinese words natively", async () => {
+  const h = createNativeHarness({ wordRepeat: 10, readSentences: false });
+  await h.api.playCardSequence(card);
+  assert.equal(h.nativeSpoken.length, 2);
+  assert.equal(h.nativeSpoken.reduce((n, text) => n + (text.match(/你好/g) || []).length, 0), 10);
+  assert.deepEqual(h.onlineSpoken, []);
+});
+
+test("manual Hear Word respects ten repeats rather than stopping at five", async () => {
+  const h = createNativeHarness({ wordRepeat: 10, readSentences: false });
+  assert.equal(await h.api.speak("你好", { lang: "zh-CN", repeat: 10 }), true);
+  assert.equal(h.nativeSpoken.reduce((n, text) => n + (text.match(/你好/g) || []).length, 0), 10);
+});
+
+test("ten repetitions with sentence reading enabled read each segment ten times", async () => {
+  const h = createAudioHarness({ wordRepeat: 10, readSentences: true });
+  await h.api.playCardSequence(card);
+  assert.equal(h.spoken.length, 4);
+  assert.equal(h.spoken.slice(0, 2).reduce((n, text) =>
+    n + (text.match(/你好/g) || []).length, 0), 10);
+  assert.equal(h.spoken.slice(2).reduce((n, text) =>
+    n + (text.match(/你好，朋友/g) || []).length, 0), 10);
+  assert.deepEqual(h.toasts, []);
+});
+
+test("nonmultiple batch sizes play the exact requested number", async () => {
+  for (const count of [1, 2, 3, 5, 6, 7, 9, 11, 13, 20]) {
+    const h = createAudioHarness({ wordRepeat: count, readSentences: false });
+    await h.api.playCardSequence(card);
+    const actual = h.spoken.reduce((sum, text) => sum + (text.match(/你好/g) || []).length, 0);
+    assert.equal(actual, count, "requested " + count + " repeats");
+    assert.deepEqual(h.toasts, []);
+  }
+});
+
+test("long text is batched without dropping requested repetitions", async () => {
+  const h = createNativeHarness();
+  const longText = "在学习中文的时候我们每天都应该坚持认真练习听说读写";
+  assert.equal(await h.api.speak(longText, { lang: "zh-CN", repeat: 10 }), true);
+  const count = h.nativeSpoken.reduce((sum, batch) =>
+    sum + batch.split(longText).length - 1, 0);
+  assert.equal(count, 10);
+  assert.ok(h.nativeSpoken.every(batch => batch.length <= 180));
+});
+
+test("invalid or excessive repeat requests are normalized safely", async () => {
+  for (const [requested, expected] of [[10, 10], [20, 20], [25, 20], [0, 2]]) {
+    const h = createAudioHarness({ readSentences: false, wordRepeat: requested });
+    await h.api.playCardSequence(card);
+    assert.equal(h.spoken.reduce((sum, text) =>
+      sum + (text.match(/你好/g) || []).length, 0), expected);
+  }
+});
+
+test("website offers a 1–20 input and stores imported ten-repeat settings", () => {
+  const html = fs.readFileSync(path.join(root, "web/index.html"), "utf8");
+  assert.match(html, /id="wordRepeatCount"[^>]*min="1" max="20"/);
+  assert.match(source, /state\.store\.settings\.wordRepeat = normalizeWordRepeat\(repeats\)/);
+  assert.match(source, /normalized\.settings\.wordRepeat =/);
+  assert.match(source, /const MAX_WORD_REPEATS = 20/);
+});
