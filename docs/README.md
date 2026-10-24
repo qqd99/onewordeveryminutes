@@ -196,3 +196,9 @@ without relying on Google/MyMemory and without creating an account. This control
 is hidden if the browser does not provide the Translator API. Other browsers
 continue using the public APIs and previously cached translations. Some words
 or phrases may still be left in English if no translator is available.
+
+## Stable repetition counts (v24)
+
+When **Word repeat count** is set to 3, 4, or 5, short Chinese words and example sentences are pronounced using **one speech request with natural punctuation pauses**. This avoids the common browser and online-TTS failure where the first two readings play, later asynchronous speech requests fail, and the app reports *Word audio unavailable*. Native Web Speech and online fallback both use the same repeated Chinese text; a failed native batch can fall back to one online recording rather than making five unrelated requests. Counts of 1 or 2 retain the existing per-repeat behavior. Very long text is kept on the segmented path to avoid provider length limits.
+
+Changing cards or pausing still cancels the current reading. The v24 service-worker cache and assets are synchronized in both `web/` and `docs/`.

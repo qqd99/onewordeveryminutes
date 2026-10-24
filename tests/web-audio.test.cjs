@@ -141,13 +141,13 @@ test("the expanded web vocabulary preserves the original 1,000 IDs and English m
   }
 });
 
-function createNativeHarness({ readSentences = false, failSecond = false } = {}) {
+function createNativeHarness({ readSentences = false, failSecond = false, failFirst = false, wordRepeat = 2 } = {}) {
   const nativeSpoken = [];
   const onlineSpoken = [];
   const state = {
     store: { settings: {
       volume: 100, readWords: true, readSentences,
-      audioEngine: "auto", wordRepeat: 2, speed: 0.85
+      audioEngine: "auto", wordRepeat, speed: 0.85
     } },
     availableVoices: [] // This is common while Chromium loads its voice list.
   };
@@ -161,7 +161,7 @@ function createNativeHarness({ readSentences = false, failSecond = false } = {})
       const attempt = nativeSpoken.length;
       queueMicrotask(() => utterance.onstart?.());
       queueMicrotask(() => {
-        if (failSecond && attempt === 2) utterance.onerror?.({ error: "voice-unavailable" });
+        if ((failSecond && attempt === 2) || (failFirst && attempt === 1)) utterance.onerror?.({ error: "voice-unavailable" });
         else utterance.onend?.();
       });
     }
@@ -394,4 +394,67 @@ test("UI has no master autoplay toggle that blocks sentence-only playback", () =
   assert.match(render, /settings\.readWords !== false/);
   assert.match(render, /settings\.readSentences !== false/);
   assert.doesNotMatch(render, /settings\.autoSpeak/);
+});
+
+test("five word repeats use one online recording, avoiding failure after the second read", async () => {
+  const h = createAudioHarness({ wordRepeat: 5, readSentences: false });
+  await h.api.playCardSequence(card);
+  assert.equal(h.spoken.length, 1, "five separate online requests should not be necessary");
+  const repeated = h.spoken[0];
+  assert.equal((repeated.match(/你好/g) || []).length, 5);
+  assert.equal((repeated.match(/。/g) || []).length, 5);
+  assert.deepEqual(h.toasts, []);
+});
+
+test("five word repeats use one native SpeechSynthesisUtterance", async () => {
+  const h = createNativeHarness({ wordRepeat: 5, readSentences: false });
+  await h.api.playCardSequence(card);
+  assert.equal(h.nativeSpoken.length, 1);
+  assert.equal((h.nativeSpoken[0].match(/你好/g) || []).length, 5);
+  assert.deepEqual(h.onlineSpoken, []);
+});
+
+test("five-repeat native failure falls back to one online recording", async () => {
+  const h = createNativeHarness({ wordRepeat: 5, readSentences: false, failFirst: true });
+  await h.api.playCardSequence(card);
+  assert.equal(h.nativeSpoken.length, 1);
+  assert.equal(h.onlineSpoken.length, 1);
+  assert.equal(h.nativeSpoken[0], h.onlineSpoken[0]);
+});
+
+test("five-repetition manual pronunciation uses one native utterance", async () => {
+  const h = createNativeHarness({ wordRepeat: 5 });
+  const success = await h.api.speak(card.front, { lang: "zh-CN", repeat: 5 });
+  assert.equal(success, true);
+  assert.equal(h.nativeSpoken.length, 1);
+  assert.equal((h.nativeSpoken[0].match(/你好/g) || []).length, 5);
+});
+
+test("five-repeat sentence also plays as one request after five-repeat word", async () => {
+  const h = createAudioHarness({ wordRepeat: 5, readSentences: true });
+  await h.api.playCardSequence(card);
+  assert.equal(h.spoken.length, 2);
+  assert.equal((h.spoken[0].match(/你好/g) || []).length, 5);
+  assert.equal((h.spoken[1].match(/你好，朋友/g) || []).length, 5);
+  assert.deepEqual(h.toasts, []);
+});
+
+test("new card cancels an in-flight five-repeat utterance", async () => {
+  const phrase = "你好。 你好。 你好。 你好。 你好。";
+  const h = createAudioHarness({ readSentences: false, wordRepeat: 5 }, null, phrase);
+  const old = h.api.playCardSequence(card);
+  await Promise.resolve();
+  const newCard = { ...card, front: "再见", example: null };
+  const next = h.api.playCardSequence(newCard);
+  await Promise.all([old, next]);
+  assert.equal(h.spoken.length, 2);
+  assert.equal(h.spoken[0], phrase);
+  assert.equal((h.spoken[1].match(/再见/g) || []).length, 5);
+  assert.deepEqual(h.toasts, []);
+});
+
+test("two-repeat speech behavior remains unchanged", async () => {
+  const h = createAudioHarness({ readSentences: false, wordRepeat: 2 });
+  await h.api.playCardSequence(card);
+  assert.deepEqual(h.spoken, ["你好", "你好"]);
 });

@@ -829,13 +829,41 @@
     return isCurrentAudio(generation);
   }
 
+  function buildRepeatedSpeechText(text, lang, count) {
+    const clean = String(text || "").trim();
+    if (!clean || count <= 1) return clean;
+    // A single browser utterance avoids losing permission/voice state between
+    // the third, fourth, and fifth independent speak() calls. Use punctuation
+    // to produce natural pauses rather than sending requests back-to-back.
+    const chinese = /^(?:zh|cmn)(?:-|$)/i.test(lang);
+    const phrase = clean.replace(/[。！？!?.,，、；;]+$/u, "") || clean;
+    const separator = chinese ? "。 " : ". ";
+    return Array(count).fill(phrase).join(separator) + (chinese ? "。" : ".");
+  }
+
   async function speakSegment(text, { lang = "zh-CN", repeat = 2, generation } = {}) {
     if (!text || !isCurrentAudio(generation) || (state.store.settings.volume ?? 100) === 0) return false;
     const engine = state.store.settings.audioEngine || "auto";
     const count = Math.min(5, Math.max(1, Math.round(Number(repeat) || 2)));
 
-    // Play one repetition at a time. If a native voice fails on the second
-    // reading, online fallback only replaces that reading, not the whole word.
+    // Bundle 3–5 repeats into one utterance/online recording when short enough.
+    // Otherwise every new asynchronous speak() or online request can fail even
+    // after the first two repetitions have already played successfully.
+    const bundled = count >= 3 ? buildRepeatedSpeechText(text, lang, count) : "";
+    if (bundled && bundled.length <= 180) {
+      let played = false;
+      if (engine !== "online") {
+        played = await speakTextNative(bundled, { lang, repeat: 1, generation });
+      }
+      if (!played && isCurrentAudio(generation) && engine !== "speechSynthesis") {
+        played = await playOnlineAudio(bundled, { lang, repeat: 1, generation });
+      }
+      return played && isCurrentAudio(generation);
+    }
+
+    // Keep individual requests for 1–2 repeats and unusually long examples;
+    // preserve the already-successful repeats if a later provider fails.
+    let completed = 0;
     for (let index = 0; index < count; index += 1) {
       if (!isCurrentAudio(generation)) return false;
       let succeeded = false;
@@ -845,7 +873,13 @@
       if (!succeeded && isCurrentAudio(generation) && engine !== "speechSynthesis") {
         succeeded = await playOnlineAudio(text, { lang, repeat: 1, generation });
       }
-      if (!succeeded) return false;
+      if (!succeeded) {
+        if (completed > 0 && isCurrentAudio(generation)) {
+          console.warn(`Pronunciation ended after ${completed} of ${count} repetitions.`);
+        }
+        return false;
+      }
+      completed += 1;
       if (index + 1 < count) await new Promise(resolve => setTimeout(resolve, 250));
     }
     return isCurrentAudio(generation);
