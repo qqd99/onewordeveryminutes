@@ -1442,7 +1442,7 @@
         words.forEach(item => {
           const a = document.createElement("a");
           a.className = "word-chip";
-          a.href = `https://translate.google.com/?sl=zh-TW&tl=${encodeURIComponent(state.store.settings.translationLanguage || "en")}&text=${encodeURIComponent(item.word)}&op=translate`;
+          a.href = `https://translate.google.com/?sl=${encodeURIComponent(TranslationSupport.sourceLanguage(state.activePack))}&tl=${encodeURIComponent(state.store.settings.translationLanguage || "en")}&text=${encodeURIComponent(item.word)}&op=translate`;
           a.target = "_blank";
           a.rel = "noopener noreferrer";
           a.title = `Translate "${item.word}" with Google Translate`;
@@ -1957,12 +1957,13 @@
   async function fetchGoogleTranslate(text, target = "en") {
     const trimmed = text.trim();
     if (!trimmed) return null;
-    const cacheKey = `${target}|${trimmed}`;
+    const source = TranslationSupport.sourceLanguage(state.activePack);
+    const cacheKey = `${source}|${target}|${trimmed}`;
     if (translationCache.has(cacheKey)) {
       return translationCache.get(cacheKey);
     }
 
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=${encodeURIComponent(target)}&dt=t&dt=rm&dt=bd&q=${encodeURIComponent(trimmed)}`;
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(source)}&tl=${encodeURIComponent(target)}&dt=t&dt=rm&dt=bd&q=${encodeURIComponent(trimmed)}`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
     let response;
@@ -2078,7 +2079,7 @@
             };
           }
 
-          let trans = translationCache.get(`${target}|${w}`);
+          let trans = translationCache.get(`${TranslationSupport.sourceLanguage(state.activePack)}|${target}|${w}`);
           if (!trans) {
             try {
               trans = await fetchGoogleTranslate(w, target);
@@ -2109,7 +2110,7 @@
         wordDetails.forEach(item => {
           const a = document.createElement("a");
           a.className = "breakdown-word-card";
-          a.href = `https://translate.google.com/?sl=zh-TW&tl=${encodeURIComponent(state.store.settings.translationLanguage || "en")}&text=${encodeURIComponent(item.word)}&op=translate`;
+          a.href = `https://translate.google.com/?sl=${encodeURIComponent(TranslationSupport.sourceLanguage(state.activePack))}&tl=${encodeURIComponent(state.store.settings.translationLanguage || "en")}&text=${encodeURIComponent(item.word)}&op=translate`;
           a.target = "_blank";
           a.rel = "noopener noreferrer";
           a.title = `Look up "${item.word}" on Google Translate`;
