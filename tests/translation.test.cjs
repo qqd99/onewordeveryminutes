@@ -165,6 +165,7 @@ test("reverse quiz shows translation progress and updates revealed answers", asy
     state, els,
     TranslationSupport: {
       normalizeLanguage: language => language,
+      sourceLanguage: () => "zh-CN",
       localizePresentation: () => new Promise(resolve => { resolveTranslation = resolve; })
     }
   });
@@ -256,6 +257,7 @@ test("reverse quiz keeps original meaning readable with a separate retry indicat
     state, els, console,
     TranslationSupport: {
       normalizeLanguage: x => x,
+      sourceLanguage: () => "zh-CN",
       localizePresentation: async () => ({ card, quiz })
     }
   });
@@ -266,7 +268,7 @@ test("reverse quiz keeps original meaning readable with a separate retry indicat
     "Do not inject an error label into the vocabulary meaning");
   assert.equal(els.translationPromptStatus.hidden, false);
   assert.equal(els.retryMeaningTranslationBtn.hidden, false);
-  assert.match(els.translationPromptMessage.textContent, /translation is not available/i);
+  assert.match(els.translationPromptMessage.textContent, /translation unavailable/i);
   state.store.settings.translationLanguage = "en";
   await context.localize(card, quiz, true);
   assert.equal(els.translationPromptStatus.hidden, true);
