@@ -1325,7 +1325,10 @@
     let localized;
     try {
       localized = await TranslationSupport.localizePresentation(
-        card, quiz, target, "en", !englishToChinese, !englishToChinese
+        card, quiz, target,
+        TranslationSupport.sourceLanguage(state.activePack),
+        !englishToChinese, !englishToChinese,
+        state.activePack?.cards || []
       );
     } catch (error) {
       console.warn("Could not translate the vocabulary meaning:", error);
@@ -1339,7 +1342,7 @@
     if (englishToChinese) {
       els.hanziTerm.textContent = visibleCardMeaning;
       if (returnedMeaning === card.meaning) {
-        showMeaningTranslationStatus("Showing the English original: translation is not available right now.", true);
+        showMeaningTranslationStatus("Direct translation unavailable. Showing the original English definition.", true);
       }
     }
     else for (const choice of localized.quiz.choices) {
@@ -1439,7 +1442,7 @@
         words.forEach(item => {
           const a = document.createElement("a");
           a.className = "word-chip";
-          a.href = `https://translate.google.com/?sl=zh-TW&tl=${encodeURIComponent(state.store.settings.translationLanguage || "en")}&text=${encodeURIComponent(item.word)}&op=translate`;
+          a.href = `https://translate.google.com/?sl=${encodeURIComponent(TranslationSupport.sourceLanguage(state.activePack))}&tl=${encodeURIComponent(state.store.settings.translationLanguage || "en")}&text=${encodeURIComponent(item.word)}&op=translate`;
           a.target = "_blank";
           a.rel = "noopener noreferrer";
           a.title = `Translate "${item.word}" with Google Translate`;
@@ -1954,12 +1957,13 @@
   async function fetchGoogleTranslate(text, target = "en") {
     const trimmed = text.trim();
     if (!trimmed) return null;
-    const cacheKey = `${target}|${trimmed}`;
+    const source = TranslationSupport.sourceLanguage(state.activePack);
+    const cacheKey = `${source}|${target}|${trimmed}`;
     if (translationCache.has(cacheKey)) {
       return translationCache.get(cacheKey);
     }
 
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=zh-CN&tl=${encodeURIComponent(target)}&dt=t&dt=rm&dt=bd&q=${encodeURIComponent(trimmed)}`;
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(source)}&tl=${encodeURIComponent(target)}&dt=t&dt=rm&dt=bd&q=${encodeURIComponent(trimmed)}`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6000);
     let response;
@@ -1992,6 +1996,12 @@
     const result = { translation, pinyin };
     translationCache.set(cacheKey, result);
     return result;
+  }
+
+  async function translateLearningWord(word, target, englishFallback = "") {
+    const source = TranslationSupport.sourceLanguage(state.activePack);
+    const translated = await TranslationSupport.translateText(word, target, source);
+    return translated && translated !== word ? translated : englishFallback;
   }
 
   function segmentChineseText(text) {
@@ -2055,7 +2065,7 @@
             return {
               word: w,
               pinyin: card.reading || "",
-              meaning: await TranslationSupport.translateText(card.meaning || "", target, "en"),
+              meaning: await translateLearningWord(w, target, card.meaning || ""),
               isHsk: true
             };
           }
@@ -2064,12 +2074,12 @@
             return {
               word: w,
               pinyin: commonWords[w].reading,
-              meaning: await TranslationSupport.translateText(commonWords[w].meaning, target, "en"),
+              meaning: await translateLearningWord(w, target, commonWords[w].meaning),
               isHsk: false
             };
           }
 
-          let trans = translationCache.get(`${target}|${w}`);
+          let trans = translationCache.get(`${TranslationSupport.sourceLanguage(state.activePack)}|${target}|${w}`);
           if (!trans) {
             try {
               trans = await fetchGoogleTranslate(w, target);
@@ -2100,7 +2110,7 @@
         wordDetails.forEach(item => {
           const a = document.createElement("a");
           a.className = "breakdown-word-card";
-          a.href = `https://translate.google.com/?sl=zh-TW&tl=${encodeURIComponent(state.store.settings.translationLanguage || "en")}&text=${encodeURIComponent(item.word)}&op=translate`;
+          a.href = `https://translate.google.com/?sl=${encodeURIComponent(TranslationSupport.sourceLanguage(state.activePack))}&tl=${encodeURIComponent(state.store.settings.translationLanguage || "en")}&text=${encodeURIComponent(item.word)}&op=translate`;
           a.target = "_blank";
           a.rel = "noopener noreferrer";
           a.title = `Look up "${item.word}" on Google Translate`;
@@ -2291,7 +2301,8 @@
         let pending;
         try {
           // This call must start synchronously from the click event.
-          pending = TranslationSupport.enableOnDeviceTranslation(target, "en", progress => {
+          pending = TranslationSupport.enableOnDeviceTranslation(
+            target, TranslationSupport.sourceLanguage(state.activePack), progress => {
             els.onDeviceTranslationStatus.textContent = `Downloading language pack: ${progress}%`;
           });
         } catch (error) {
