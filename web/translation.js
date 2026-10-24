@@ -1,4 +1,4 @@
-/* English-meaning translation helper for the web app. */
+/* Study translation helper: source is the active learning language. */
 (function (root) {
   "use strict";
 
