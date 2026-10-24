@@ -26,12 +26,22 @@
   }
 
   function sourceLanguage(pack) {
+    // translationLanguage describes the language of the *stored definitions*
+    // (English in the Chinese pack), not the language being learned.
     const names = {
       English: "en", Vietnamese: "vi", French: "fr", Spanish: "es",
       German: "de", Japanese: "ja", Korean: "ko", Chinese: "zh-CN",
       Thai: "th", Indonesian: "id"
     };
-    return names[pack?.translationLanguage] || "en";
+    const code = pack?.languageCode || pack?.speechLang;
+    if (typeof code === "string" && code.trim()) {
+      const normalized = code.trim().replace(/_/g, "-");
+      if (LANGUAGES[normalized]) return normalized;
+      const base = normalized.split("-")[0].toLowerCase();
+      if (base === "zh" || base === "cmn") return "zh-CN";
+      if (LANGUAGES[base]) return base;
+    }
+    return names[pack?.language] || names[pack?.translationLanguage] || "en";
   }
 
   function decodeEntities(text) {
@@ -248,37 +258,93 @@
     return task;
   }
 
-  async function localizePresentation(card, quiz, targetLanguage, fromLanguage = "en", translateChoices = true, translateExample = true) {
+  async function localizePresentation(
+    card, quiz, targetLanguage, fromLanguage = "en",
+    translateChoices = true, translateExample = true, vocabulary = []
+  ) {
     const target = normalizeLanguage(targetLanguage);
     if (target === "en" || target === fromLanguage) return { card, quiz };
+
+    // In the Chinese pack, English meanings are only stored annotations.
+    // Translate the *Chinese word itself*, never the English annotation.
+    const directFromLearningLanguage = fromLanguage !== "en";
+    const wordById = new Map(
+      (Array.isArray(vocabulary) ? vocabulary : [])
+        .filter(item => item?.id)
+        .map(item => [item.id, item.front])
+    );
     const choices = translateChoices && Array.isArray(quiz?.choices) ? quiz.choices : [];
+    const choiceSource = choice => {
+      if (!directFromLearningLanguage) return choice.text;
+      if (choice.cardId === card.id || choice.isCorrect || choice.id === "correct") {
+        return card.front;
+      }
+      return wordById.get(choice.cardId) || "";
+    };
+
+    const originalCardSource = directFromLearningLanguage ? card.front : card.meaning;
+    const originalExampleSource = directFromLearningLanguage
+      ? card.example?.text || "" : card.example?.meaning || "";
+    const sources = choices.map(choiceSource);
     const [localizedChoices, localizedMeaning, localizedExample] = await Promise.all([
-      Promise.all(choices.map(choice => translateText(choice.text, target, fromLanguage))),
-      translateText(card.meaning, target, fromLanguage),
-      translateExample ? translateText(card.example?.meaning || "", target, fromLanguage) : (card.example?.meaning || "")
+      Promise.all(choices.map((choice, index) => sources[index]
+        ? translateText(sources[index], target, fromLanguage)
+        : Promise.resolve(choice.text))),
+      translateText(originalCardSource, target, fromLanguage),
+      translateExample
+        ? translateText(originalExampleSource, target, fromLanguage)
+        : (card.example?.meaning || "")
     ]);
 
-    const keys = localizedChoices.map(value => value.toLocaleLowerCase().replace(/\s+/g, ""));
-    // Ambiguous translated answers must not make a multiple-choice quiz unfair.
-    const distinct = new Set(keys).size === keys.length;
-    const displayedQuiz = choices.length && distinct
+    // A failed translation must not display Chinese text as the Vietnamese
+    // meaning or create a quiz with mixed Chinese / Vietnamese choices.
+    const validMeaning = localizedMeaning && localizedMeaning !== originalCardSource;
+    const normalizedChoices = localizedChoices.map(value =>
+      String(value || "").toLocaleLowerCase().replace(/\s+/g, "")
+    );
+    const distinct = new Set(normalizedChoices).size === normalizedChoices.length;
+    const complete = choices.every((choice, index) =>
+      sources[index] && localizedChoices[index] &&
+      localizedChoices[index] !== sources[index]
+    );
+    const translatedChoices = choices.length && complete && distinct;
+    const displayedQuiz = translatedChoices
       ? {
           ...quiz,
-          choices: choices.map((choice, index) => ({ ...choice, text: localizedChoices[index] }))
+          choices: choices.map((choice, index) => ({
+            ...choice, text: localizedChoices[index]
+          }))
         }
       : quiz;
-    const correctOption = distinct && choices.length
-      ? displayedQuiz.choices.find(choice => choice.id === quiz.correctChoiceId)
+    const correctOption = translatedChoices
+      ? displayedQuiz.choices.find(choice =>
+          choice.isCorrect || choice.id === quiz.correctChoiceId
+        )
       : null;
 
+    const translatedExample = translatedExampleAvailable(
+      localizedExample, originalExampleSource, directFromLearningLanguage,
+      card.example?.meaning || "", translateExample
+    );
     return {
       card: {
         ...card,
-        meaning: choices.length && !distinct ? card.meaning : (correctOption?.text || localizedMeaning),
-        example: card.example ? { ...card.example, meaning: localizedExample } : card.example
+        meaning: choices.length && !translatedChoices
+          ? card.meaning
+          : (correctOption?.text || (validMeaning ? localizedMeaning : card.meaning)),
+        example: card.example ? {
+          ...card.example,
+          meaning: translatedExample
+        } : card.example
       },
       quiz: displayedQuiz
     };
+  }
+
+  function translatedExampleAvailable(translated, source, direct, fallback, requested) {
+    if (!requested) return fallback;
+    if (translated && translated !== source) return translated;
+    return direct ? fallback : (translated || fallback);
   }
 
   root.TranslationSupport = {
