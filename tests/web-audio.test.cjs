@@ -11,7 +11,7 @@ const end = source.indexOf("  /* -----------------------------------------------
 assert.ok(start >= 0 && end > start, "web audio module must exist");
 const audioModule = source.slice(start, end);
 
-function createAudioHarness(overrides = {}, failText = null, hangText = null) {
+function createAudioHarness(overrides = {}, failText = null, hangText = null, maxRepeatsPerRequest = Infinity) {
   const spoken = [];
   const toasts = [];
   const settings = {
@@ -31,7 +31,7 @@ function createAudioHarness(overrides = {}, failText = null, hangText = null) {
       spoken.push(text);
       if (text !== hangText) {
         queueMicrotask(() => {
-          if (text === failText) this.onerror?.(new Error("Failed"));
+          if (text === failText || (text.match(/你好/g) || []).length > maxRepeatsPerRequest) this.onerror?.(new Error("Failed"));
           else this.onended?.();
         });
       }
@@ -459,43 +459,60 @@ test("two-repeat speech behavior remains unchanged", async () => {
   assert.deepEqual(h.spoken, ["你好", "你好"]);
 });
 
-test("Word repeat count 10 plays the word exactly ten times online", async () => {
-  const h = createAudioHarness({ wordRepeat: 10, readSentences: false });
+
+test("automatic playback of ten words uses two 5-repeat recordings", async () => {
+  // Fake provider rejects requests containing more than five copies.
+  const h = createAudioHarness({ wordRepeat: 10, readSentences: false }, null, null, 5);
   await h.api.playCardSequence(card);
-  assert.equal(h.spoken.length, 1, "short repeated words should use one audio request");
-  assert.equal((h.spoken[0].match(/你好/g) || []).length, 10);
+  assert.equal(h.spoken.length, 2);
+  assert.deepEqual(h.spoken.map(text => (text.match(/你好/g) || []).length), [5, 5]);
   assert.deepEqual(h.toasts, []);
 });
 
-test("Word repeat count 10 plays the word exactly ten times with native speech", async () => {
-  const h = createNativeHarness({ wordRepeat: 10, readSentences: false });
+test("native automatic reading of ten words uses two manageable utterances", async () => {
+  const h = createNativeHarness({ wordRepeat: 10 });
   await h.api.playCardSequence(card);
-  assert.equal(h.nativeSpoken.length, 1);
-  assert.equal((h.nativeSpoken[0].match(/你好/g) || []).length, 10);
+  assert.equal(h.nativeSpoken.length, 2);
+  assert.deepEqual(h.nativeSpoken.map(text => (text.match(/你好/g) || []).length), [5, 5]);
   assert.deepEqual(h.onlineSpoken, []);
 });
 
-test("Word repeat count 10 also applies to example sentences", async () => {
-  const h = createAudioHarness({ wordRepeat: 10, readSentences: true });
+test("ten word and sentence repetitions complete without warning", async () => {
+  const h = createAudioHarness({ wordRepeat: 10, readSentences: true }, null, null, 5);
   await h.api.playCardSequence(card);
-  assert.equal(h.spoken.length, 2);
-  assert.equal((h.spoken[0].match(/你好/g) || []).length, 10);
-  assert.equal((h.spoken[1].match(/你好，朋友/g) || []).length, 10);
+  assert.equal(h.spoken.length, 4);
+  assert.deepEqual(h.spoken.slice(0, 2).map(text => (text.match(/你好/g) || []).length), [5, 5]);
+  assert.deepEqual(h.spoken.slice(2).map(text => (text.match(/你好，朋友/g) || []).length), [5, 5]);
+  assert.deepEqual(h.toasts, []);
 });
 
-test("manual pronunciation honors ten repetitions", async () => {
+test("manual pronunciation honors ten repeats with two native utterances", async () => {
   const h = createNativeHarness({ wordRepeat: 10 });
   assert.equal(await h.api.speak(card.front, { lang: "zh-CN", repeat: 10 }), true);
-  assert.equal(h.nativeSpoken.length, 1);
-  assert.equal((h.nativeSpoken[0].match(/你好/g) || []).length, 10);
+  assert.deepEqual(h.nativeSpoken.map(text => (text.match(/你好/g) || []).length), [5, 5]);
 });
 
-test("ten-repeat native speech can fall back to one online recording", async () => {
+test("failed native batch falls back to online without repeating successful batches", async () => {
   const h = createNativeHarness({ wordRepeat: 10, failFirst: true });
   await h.api.playCardSequence(card);
-  assert.equal(h.nativeSpoken.length, 1);
+  assert.equal(h.nativeSpoken.length, 2);
   assert.equal(h.onlineSpoken.length, 1);
-  assert.equal((h.onlineSpoken[0].match(/你好/g) || []).length, 10);
+  assert.equal((h.onlineSpoken[0].match(/你好/g) || []).length, 5);
+  assert.equal((h.nativeSpoken[1].match(/你好/g) || []).length, 5);
+});
+
+test("long sentences are automatically split into smaller speech requests", async () => {
+  const phrase = "这是一个比较长的中文例句，包含一些新的单词和语法";
+  const h = createAudioHarness({ wordRepeat: 10, readWords: false, readSentences: true });
+  await h.api.playCardSequence({ ...card, example: { text: phrase, speechLang: "zh-CN" } });
+  assert.ok(h.spoken.length >= 3, "sentences should not be sent as one giant recording");
+  assert.equal(h.spoken.join(" ").split(phrase).length - 1, 10);
+  assert.deepEqual(h.toasts, []);
+});
+
+test("native watchdog allows long utterances to finish normally", () => {
+  assert.match(source, /\}, 5000\);\s*const finishWatchdog/);
+  assert.match(source, /Math\.min\(180000, Math\.max\(35000,/);
 });
 
 test("settings field and imported backups allow ten repeats", () => {
