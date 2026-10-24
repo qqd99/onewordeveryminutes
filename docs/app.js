@@ -207,6 +207,9 @@
       normalized.settings.readWords = settings.autoSpeak;
     }
     delete normalized.settings.autoSpeak;
+    const savedRepeats = Number(normalized.settings.wordRepeat);
+    normalized.settings.wordRepeat = Number.isFinite(savedRepeats) && savedRepeats >= 1
+      ? Math.min(10, Math.round(savedRepeats)) : 2;
     if (!["chinese-to-english", "english-to-chinese"].includes(normalized.settings.learningMode)) {
       normalized.settings.learningMode = "chinese-to-english";
     }
@@ -833,7 +836,7 @@
     const clean = String(text || "").trim();
     if (!clean || count <= 1) return clean;
     // A single browser utterance avoids losing permission/voice state between
-    // the third, fourth, and fifth independent speak() calls. Use punctuation
+    // later independent speak() calls. Use punctuation
     // to produce natural pauses rather than sending requests back-to-back.
     const chinese = /^(?:zh|cmn)(?:-|$)/i.test(lang);
     const phrase = clean.replace(/[。！？!?.,，、；;]+$/u, "") || clean;
@@ -844,9 +847,9 @@
   async function speakSegment(text, { lang = "zh-CN", repeat = 2, generation } = {}) {
     if (!text || !isCurrentAudio(generation) || (state.store.settings.volume ?? 100) === 0) return false;
     const engine = state.store.settings.audioEngine || "auto";
-    const count = Math.min(5, Math.max(1, Math.round(Number(repeat) || 2)));
+    const count = Math.min(10, Math.max(1, Math.round(Number(repeat) || 2)));
 
-    // Bundle 3–5 repeats into one utterance/online recording when short enough.
+    // Bundle 3–10 repeats into one utterance/online recording when short enough.
     // Otherwise every new asynchronous speak() or online request can fail even
     // after the first two repetitions have already played successfully.
     const bundled = count >= 3 ? buildRepeatedSpeechText(text, lang, count) : "";
@@ -2586,7 +2589,7 @@
           }
           const repeats = Number(importedSettings.wordRepeat);
           if (Number.isFinite(repeats) && repeats >= 1) {
-            state.store.settings.wordRepeat = Math.min(5, Math.round(repeats));
+            state.store.settings.wordRepeat = Math.min(10, Math.round(repeats));
           }
           els.readWordToggle.checked = state.store.settings.readWords !== false;
           els.readSentenceToggle.checked = state.store.settings.readSentences !== false;

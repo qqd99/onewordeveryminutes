@@ -66,9 +66,9 @@ Then open `http://localhost:8080` in your browser.
   - **Self-Paced Study**: Review at your own speed with keyboard shortcuts (`1`, `2`, `3` for answers, `Space` for audio/next, `R` for Remember, `F` for Forget, `N` for New Word).
   - **Interval Reminder Mode**: Automatically prompts you with cards every *X* minutes with optional desktop/browser notifications.
 - **Progress Export & Import**:
-  - 100% compatible with the Vocabulary SRS browser extension!
+  - Preserves compatible existing SRS progress and imported backups.
   - Export your progress to JSON anytime.
-  - Import backups from either the web app or the Edge extension.
+  - Import JSON backups exported by the web app or older versions.
 - **Progressive Web App (PWA)**:
   - Works 100% offline via Service Worker cache.
   - Installable to home screen on iOS, Android, macOS, and Windows.
@@ -199,7 +199,7 @@ or phrases may still be left in English if no translator is available.
 
 ## Stable repetition counts (v24)
 
-When **Word repeat count** is set to 3, 4, or 5, short Chinese words and example sentences are pronounced using **one speech request with natural punctuation pauses**. This avoids the common browser and online-TTS failure where the first two readings play, later asynchronous speech requests fail, and the app reports *Word audio unavailable*. Native Web Speech and online fallback both use the same repeated Chinese text; a failed native batch can fall back to one online recording rather than making five unrelated requests. Counts of 1 or 2 retain the existing per-repeat behavior. Very long text is kept on the segmented path to avoid provider length limits.
+When **Word repeat count** is set to 3–10, short Chinese words and example sentences are pronounced using **one speech request with natural punctuation pauses**. This avoids the common browser and online-TTS failure where the first two readings play, later asynchronous speech requests fail, and the app reports *Word audio unavailable*. Native Web Speech and online fallback both use the same repeated Chinese text; a failed native batch can fall back to one online recording rather than making five unrelated requests. Counts of 1 or 2 retain the existing per-repeat behavior. Very long text is kept on the segmented path to avoid provider length limits.
 
 Changing cards or pausing still cancels the current reading. The v24 service-worker cache and assets are synchronized in both `web/` and `docs/`.
 
@@ -208,3 +208,9 @@ Changing cards or pausing still cancels the current reading. The v24 service-wor
 The study-card translator now uses the actual vocabulary word in the selected learning language as its source. In the Chinese pack, **好 → tốt** is requested as **zh-CN → vi**, not by translating its stored English definition “good.” Mode 1 translates each multiple-choice meaning from the Chinese word behind that option, and Mode 2 translates the English-facing prompt from the current Chinese card. Example-sentence meanings use the original Chinese sentence as the source whenever they are translated. The standalone Translate tab already translated Chinese sentences directly; its known-word breakdown also now uses each Chinese word rather than English definitions.
 
 For other learning packs, the source language is resolved from the pack's `languageCode` / `speechLang` / `language` fields instead of the language of its stored definitions. Browser on-device translation uses the same source and target languages. The underlying vocabulary data and SRS progress remain unchanged. If a provider is unavailable, the existing English definition is retained as a readable fallback. Both GitHub Pages publishing paths use the same v25 cache.
+
+## Word repeat count fix and web-only repository (v26)
+
+**Word repeat count** supports integers from 1 to 10. The web player, manual pronunciation, saved settings, and imported backups use the selected number instead of stopping at five. The PWA cache is updated so existing installations retrieve the corrected playback code.
+
+The maintained application is the standalone website in `web/` (with `docs/` kept in sync for branch-based Pages). Browser-extension-only source files have been removed; the website and offline PWA require no extension.
