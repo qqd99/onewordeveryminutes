@@ -17,4 +17,4 @@ Fallback sentence material was selected from the **Chinese Example Sentences** d
 - Tatoeba: https://tatoeba.org
 - License: https://creativecommons.org/licenses/by/2.0/fr/
 
-Original examples marked `source: "original"` were written specifically for this extension.
+Original examples marked `source: "original"` were written specifically for the vocabulary learning application.
