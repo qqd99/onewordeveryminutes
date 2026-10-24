@@ -210,6 +210,10 @@
     if (!["chinese-to-english", "english-to-chinese"].includes(normalized.settings.learningMode)) {
       normalized.settings.learningMode = "chinese-to-english";
     }
+    // Normalize previously saved/backup repeat settings without capping at five.
+    const repeats = Number(normalized.settings.wordRepeat);
+    normalized.settings.wordRepeat = Number.isFinite(repeats) && repeats >= 1
+      ? Math.max(1, Math.min(20, Math.round(repeats))) : 2;
     normalized.settings.translationLanguage = typeof TranslationSupport !== "undefined"
       ? TranslationSupport.normalizeLanguage(normalized.settings.translationLanguage)
       : (["en", "vi", "fr", "es", "de", "ja", "ko", "zh-CN", "th", "id"]
@@ -592,6 +596,13 @@
      3. AUDIO & SPEECH SYNTHESIS ENGINE (ROBUST MULTI-PROVIDER)
   ------------------------------------------------------------- */
   let activeUtterance = null;
+  const MAX_WORD_REPEATS = 20;
+
+  function normalizeWordRepeat(value, fallback = 2) {
+    const n = Number(value);
+    const rounded = Number.isFinite(n) && n >= 1 ? Math.round(n) : fallback;
+    return Math.max(1, Math.min(MAX_WORD_REPEATS, rounded));
+  }
   let activeAudioEl = null;
   let cancelActivePlayback = null;
   let audioGeneration = 0;
@@ -844,43 +855,37 @@
   async function speakSegment(text, { lang = "zh-CN", repeat = 2, generation } = {}) {
     if (!text || !isCurrentAudio(generation) || (state.store.settings.volume ?? 100) === 0) return false;
     const engine = state.store.settings.audioEngine || "auto";
-    const count = Math.min(5, Math.max(1, Math.round(Number(repeat) || 2)));
+    const count = normalizeWordRepeat(repeat);
 
-    // Bundle 3–5 repeats into one utterance/online recording when short enough.
-    // Otherwise every new asynchronous speak() or online request can fail even
-    // after the first two repetitions have already played successfully.
-    const bundled = count >= 3 ? buildRepeatedSpeechText(text, lang, count) : "";
-    if (bundled && bundled.length <= 180) {
-      let played = false;
-      if (engine !== "online") {
-        played = await speakTextNative(bundled, { lang, repeat: 1, generation });
-      }
-      if (!played && isCurrentAudio(generation) && engine !== "speechSynthesis") {
-        played = await playOnlineAudio(bundled, { lang, repeat: 1, generation });
-      }
-      return played && isCurrentAudio(generation);
-    }
-
-    // Keep individual requests for 1–2 repeats and unusually long examples;
-    // preserve the already-successful repeats if a later provider fails.
+    // Longer requests are divided into stable batches of at most five repeats.
+    // 10 requested readings produce 5 + 5; the five-repeat batch size is NOT
+    // a cap on the total number of repetitions.
     let completed = 0;
-    for (let index = 0; index < count; index += 1) {
+    while (completed < count) {
       if (!isCurrentAudio(generation)) return false;
+      let batchSize = count <= 2 ? 1 : Math.min(5, count - completed);
+      let batched = buildRepeatedSpeechText(text, lang, batchSize);
+      // Trim long batches to avoid provider payload limits while preserving the
+      // total number of requested repetitions for words and sentences alike.
+      while (batchSize > 1 && batched.length > 180) {
+        batchSize -= 1;
+        batched = buildRepeatedSpeechText(text, lang, batchSize);
+      }
       let succeeded = false;
       if (engine !== "online") {
-        succeeded = await speakTextNative(text, { lang, repeat: 1, generation });
+        succeeded = await speakTextNative(batched, { lang, repeat: 1, generation });
       }
       if (!succeeded && isCurrentAudio(generation) && engine !== "speechSynthesis") {
-        succeeded = await playOnlineAudio(text, { lang, repeat: 1, generation });
+        succeeded = await playOnlineAudio(batched, { lang, repeat: 1, generation });
       }
       if (!succeeded) {
         if (completed > 0 && isCurrentAudio(generation)) {
-          console.warn(`Pronunciation ended after ${completed} of ${count} repetitions.`);
+          console.warn(`Pronunciation stopped after ${completed} of ${count} repetitions.`);
         }
         return false;
       }
-      completed += 1;
-      if (index + 1 < count) await new Promise(resolve => setTimeout(resolve, 250));
+      completed += batchSize;
+      if (completed < count) await new Promise(resolve => setTimeout(resolve, 250));
     }
     return isCurrentAudio(generation);
   }
@@ -902,7 +907,7 @@
     const generation = stopAudio();
     if ((!readWord && !readSentence) || (state.store.settings.volume ?? 100) === 0) return;
 
-    const repeatCount = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
+    const repeatCount = normalizeWordRepeat(state.store.settings.wordRepeat);
     if (readWord) {
       const wordPlayed = await speakSegment(card.speechText || card.front, {
         lang: card.speechLang || "zh-CN",
@@ -1592,7 +1597,7 @@
   function setupActionButtons() {
     els.speakWordBtn.addEventListener("click", () => {
       if (state.currentCard) {
-        const r = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
+        const r = normalizeWordRepeat(state.store.settings.wordRepeat);
         speak(state.currentCard.speechText || state.currentCard.front, {
           lang: state.currentCard.speechLang || "zh-CN",
           repeat: r
@@ -1602,7 +1607,7 @@
 
     els.speakSentenceBtn.addEventListener("click", () => {
       if (state.currentCard?.example?.text) {
-        const r = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
+        const r = normalizeWordRepeat(state.store.settings.wordRepeat);
         speak(state.currentCard.example.speechText || state.currentCard.example.text, {
           lang: state.currentCard.example.speechLang || state.currentCard.speechLang || "zh-CN",
           repeat: r
@@ -1612,7 +1617,7 @@
 
     els.speakExampleBtn.addEventListener("click", () => {
       if (state.currentCard?.example?.text) {
-        const r = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
+        const r = normalizeWordRepeat(state.store.settings.wordRepeat);
         speak(state.currentCard.example.speechText || state.currentCard.example.text, {
           lang: state.currentCard.example.speechLang || state.currentCard.speechLang || "zh-CN",
           repeat: r
@@ -2234,7 +2239,7 @@
     els.speakInputBtn.addEventListener("click", () => {
       const text = els.translateInput.value.trim();
       if (text) {
-        const r = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
+        const r = normalizeWordRepeat(state.store.settings.wordRepeat);
         speak(text, { lang: "zh-CN", repeat: r });
       }
     });
@@ -2479,14 +2484,17 @@
       saveStoredState();
     });
 
-    const currentRepeat = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
+    const currentRepeat = normalizeWordRepeat(state.store.settings.wordRepeat);
     els.wordRepeatCount.value = currentRepeat;
     els.wordRepeatLabel.textContent = currentRepeat;
     els.wordRepeatCount.addEventListener("input", (e) => {
-      const val = Math.max(1, Math.min(10, parseInt(e.target.value, 10) || 1));
+      const val = normalizeWordRepeat(e.target.value, 1);
       state.store.settings.wordRepeat = val;
       els.wordRepeatLabel.textContent = val;
       saveStoredState();
+    });
+    els.wordRepeatCount.addEventListener("change", () => {
+      els.wordRepeatCount.value = normalizeWordRepeat(state.store.settings.wordRepeat);
     });
 
     els.voiceSelect.addEventListener("change", (e) => {
@@ -2586,7 +2594,7 @@
           }
           const repeats = Number(importedSettings.wordRepeat);
           if (Number.isFinite(repeats) && repeats >= 1) {
-            state.store.settings.wordRepeat = Math.min(5, Math.round(repeats));
+            state.store.settings.wordRepeat = normalizeWordRepeat(repeats);
           }
           els.readWordToggle.checked = state.store.settings.readWords !== false;
           els.readSentenceToggle.checked = state.store.settings.readSentences !== false;
@@ -2723,7 +2731,7 @@
         if (!state.quizAnswered) {
           // Play word audio
           if (state.currentCard) {
-            const r = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
+            const r = normalizeWordRepeat(state.store.settings.wordRepeat);
             speak(state.currentCard.speechText || state.currentCard.front, {
               lang: state.currentCard.speechLang || "zh-CN",
               repeat: r
