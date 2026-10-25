@@ -69,12 +69,12 @@ function mockIndexedDb() {
 }
 
 test("Gemini API integration is in frontend but credential is absent from source control", () => {
-  assert.match(code, /gemini-2\.5-flash-image/);
+  assert.match(code, /gemini-3\.1-flash-image/);
   assert.match(code, /x-goog-api-key/);
   assert.doesNotMatch(code, /AQ\.[A-Za-z0-9_-]{20,}/);
   assert.match(html, /aiGeminiKeyInput/);
-  assert.match(html, /ai-image-config\.js\?v=32/);
-  assert.match(html, /ai-picture\.js\?v=32/);
+  assert.match(html, /ai-image-config\.js\?v=33/);
+  assert.match(html, /ai-picture\.js\?v=33/);
   const workflow = fs.readFileSync(path.join(root, ".github/workflows/deploy.yml"), "utf8");
   assert.ok(workflow.includes("secrets.GEMINI_IMAGE_API_KEY"));
   assert.ok(workflow.includes("web/ai-image-config.js"));
@@ -86,13 +86,15 @@ test("Gemini prompt targets one word only and generated responses use inlineData
     config: {geminiKey:"AQ.testingkeyfortheunitmocktokenonly999", approvalEndpoint:""},
     fetch: async (url, init) => {
       calls += 1;
-      assert.match(url, /gemini-2\.5-flash-image:generateContent$/);
+      assert.match(url, /gemini-3\.1-flash-image:generateContent$/);
       assert.equal(init.headers["x-goog-api-key"], "AQ.testingkeyfortheunitmocktokenonly999");
       const body = JSON.parse(init.body);
       assert.equal(body.contents.length, 1);
       assert.match(body.contents[0].parts[0].text, /苹果/);
       assert.match(body.contents[0].parts[0].text, /apple/);
       assert.deepEqual(Array.from(body.generationConfig.responseModalities), ["TEXT","IMAGE"]);
+      assert.equal(body.generationConfig.imageConfig.aspectRatio, "4:3");
+      assert.equal(body.generationConfig.imageConfig.imageSize, "512");
       return {
         ok: true,
         json: async () => ({candidates:[{content:{parts:[
@@ -165,4 +167,12 @@ test("AI image options keep current local-photo fallback and reveal localized me
   const css = fs.readFileSync(path.join(root, "web/style.css"), "utf8");
   assert.match(css, /ai-picture-review/);
   assert.match(css, /object-fit: contain/);
+});
+
+test("saving a key retries image generation on the current quiz and failure text is surfaced", () => {
+  assert.match(app, /Gemini key saved\. Rechecking image generation/);
+  assert.match(app, /void hydrateTargetAiPhoto\(state\.currentCard, state\.currentQuiz\)/);
+  assert.match(app, /quiz\.aiError = error\.message \|\| String\(error\)/);
+  assert.match(app, /Gemini couldn't generate this word's picture/);
+  assert.doesNotMatch(app, /Using the original picture\. Gemini generation is unavailable or not configured/);
 });
