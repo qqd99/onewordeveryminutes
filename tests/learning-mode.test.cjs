@@ -263,7 +263,9 @@ test("public photo mode bundles no pictograms and shows source/license links aft
   assert.match(render, /sourceUrl/);
   assert.ok(render.includes("source / credit"));
   assert.ok(render.includes("Photo ${index + 1} license"));
-  assert.match(css, /object-fit: cover/);
+  assert.match(css, /object-fit: contain/);
+  assert.match(css, /object-position: center/);
+  assert.doesNotMatch(css, /object-fit: cover/);
   assert.ok(!css.includes(".choice-picture {"));
 });
 

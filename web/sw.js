@@ -3,12 +3,12 @@
  * Caches the application shell, vocabulary and bundled real photos for offline study.
  */
 
-const CACHE_NAME = "vocab-srs-cache-v30";
+const CACHE_NAME = "vocab-srs-cache-v31";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
   "./style.css",
-  "./style.css?v=30",
+  "./style.css?v=31",
   "./picture-catalog.js",
   "./picture-catalog.js?v=30",
   "./photos/almond.jpg",
