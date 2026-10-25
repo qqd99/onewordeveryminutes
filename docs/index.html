@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=32" />
+  <link rel="stylesheet" href="style.css?v=34" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -115,14 +115,14 @@
         <div class="quiz-section" id="quizSection">
           <div class="quiz-prompt" id="quizPrompt">Choose the correct meaning</div>
           <div class="choices-grid" id="choicesGrid"></div>
-          <button id="photoRetryBtn" class="btn btn-secondary photo-retry-btn" type="button" hidden>Retry loading saved photos</button>
+          <button id="photoRetryBtn" class="btn btn-secondary photo-retry-btn" type="button" hidden>Retry loading internet photos</button>
           <div class="revealed-meaning-box" id="revealedMeaning" hidden></div>
           <div id="photoCredits" class="photo-credits" hidden></div>
           <div id="aiReview" class="ai-picture-review" hidden>
             <p id="aiReviewText" role="status"></p>
             <div class="ai-picture-actions">
               <button id="aiApproveBtn" class="btn btn-primary" type="button">👍 Good — save for this word</button>
-              <button id="aiRegenerateBtn" class="btn btn-secondary" type="button">↻ Bad — regenerate this word only</button>
+              <button id="aiRegenerateBtn" class="btn btn-secondary" type="button">↻ Bad — find another photo for this word</button>
             </div>
           </div>
         </div>
@@ -345,7 +345,7 @@
           <div class="setting-row">
             <div class="setting-info">
               <label for="learningModeSelect">Quiz direction</label>
-              <p>Mode 1: Chinese → localized meaning. Mode 2: localized meaning → Chinese. Mode 3: Chinese → picture; the localized text meaning appears after answering. Mode 3 uses real photos saved with the website. No image search or internet connection is needed once the app has loaded; only words with suitable saved photos are quizzed. Your selection is saved until changed.</p>
+              <p>Mode 1: Chinese → localized meaning. Mode 2: localized meaning → Chinese. Mode 3: Chinese → picture; the localized text meaning appears after answering. Mode 3 searches openly licensed photos on Wikimedia Commons for the current word and keeps two locally saved distractors. Internet access is needed for uncached words. Approve an appropriate image to reuse it later in this browser. Your selection is saved until changed.</p>
             </div>
             <div class="setting-control">
               <select id="learningModeSelect" class="pack-select">
@@ -358,20 +358,11 @@
         </div>
 
         <div class="settings-group">
-          <h2 class="settings-group-title">AI picture generation (Mode 3)</h2>
+          <h2 class="settings-group-title">Internet picture search (Mode 3)</h2>
           <div class="setting-row">
             <div class="setting-info">
-              <label for="aiGeminiKeyInput">Gemini API key (optional browser override)</label>
-              <p>If the site owner has configured a deployment key, visitors need not enter their own.
-                 Only the current word's picture is generated and judged; approved images are saved in this browser.
-                 A shared approval database requires a separately configured endpoint. Gemini image generation requires paid API access; any API error will be shown here after generation is attempted.</p>
-              <p id="aiKeyStatus" class="ai-key-status" role="status"></p>
-            </div>
-            <div class="setting-control ai-key-controls">
-              <input type="password" id="aiGeminiKeyInput" class="text-input" autocomplete="off"
-                placeholder="Paste Google AI Studio key" aria-label="Gemini API key"/>
-              <button id="aiKeySaveBtn" class="btn btn-primary" type="button">Save key on this device</button>
-              <button id="aiKeyClearBtn" class="btn btn-secondary" type="button">Clear device key</button>
+              <p>Pictures for the current word are searched on Wikimedia Commons, without any API key or Gemini quota. Only the correct-word photo can be judged and approved; the other two are local distractors. After answering, choose Good to save the photo in this browser, or Bad to find another. Source and license links are provided with each photo.</p>
+              <p>Approved photos can be shared across devices only if a separate shared database endpoint is configured. Without one, approvals remain on the current device.</p>
             </div>
           </div>
         </div>
@@ -634,9 +625,9 @@
   <!-- Load Scripts -->
   <script src="srs.js?v=19"></script>
   <script src="translation.js?v=25"></script>
-  <script src="ai-image-config.js?v=33"></script>
+  <script src="ai-image-config.js?v=34"></script>
   <script src="picture-catalog.js?v=30"></script>
-  <script src="ai-picture.js?v=33"></script>
-  <script src="app.js?v=33"></script>
+  <script src="internet-picture.js?v=34"></script>
+  <script src="app.js?v=34"></script>
 </body>
 </html>

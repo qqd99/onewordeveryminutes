@@ -1,2 +1,2 @@
-/* May be replaced during GitHub Pages deployment. Never commit a live API key. */
-window.AI_IMAGE_CONFIG = {geminiKey:"",approvalEndpoint:""};
+/* Optional shared picture-approval endpoint set during GitHub Pages deployment. */
+window.AI_IMAGE_CONFIG = {approvalEndpoint: ""};

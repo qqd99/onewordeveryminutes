@@ -29,19 +29,13 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      # The deployed browser config is intentionally public. Keep the live
-      # Gemini key out of git so GitHub secret scanning remains enabled.
-      - name: Write public client image configuration
+      - name: Write optional community-image database configuration
         env:
-          PUBLIC_GEMINI_KEY: ${{ secrets.GEMINI_IMAGE_API_KEY }}
           IMAGE_APPROVAL_ENDPOINT: ${{ vars.AI_IMAGE_APPROVAL_ENDPOINT }}
         run: |
           node - <<'NODE'
           const fs = require('node:fs');
-          const config = {
-            geminiKey: process.env.PUBLIC_GEMINI_KEY || '',
-            approvalEndpoint: process.env.IMAGE_APPROVAL_ENDPOINT || ''
-          };
+          const config = { approvalEndpoint: process.env.IMAGE_APPROVAL_ENDPOINT || '' };
           fs.writeFileSync('web/ai-image-config.js',
             'window.AI_IMAGE_CONFIG = ' + JSON.stringify(config) + ';\n');
           NODE
