@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=31" />
+  <link rel="stylesheet" href="style.css?v=32" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -118,6 +118,13 @@
           <button id="photoRetryBtn" class="btn btn-secondary photo-retry-btn" type="button" hidden>Retry loading saved photos</button>
           <div class="revealed-meaning-box" id="revealedMeaning" hidden></div>
           <div id="photoCredits" class="photo-credits" hidden></div>
+          <div id="aiReview" class="ai-picture-review" hidden>
+            <p id="aiReviewText" role="status"></p>
+            <div class="ai-picture-actions">
+              <button id="aiApproveBtn" class="btn btn-primary" type="button">👍 Good — save for this word</button>
+              <button id="aiRegenerateBtn" class="btn btn-secondary" type="button">↻ Bad — regenerate this word only</button>
+            </div>
+          </div>
         </div>
 
         <!-- Example Sentence Card -->
@@ -346,6 +353,25 @@
                 <option value="english-to-chinese">Mode 2 — Meaning → Chinese</option>
                 <option value="chinese-to-picture">Mode 3 — Chinese → Picture</option>
               </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <h2 class="settings-group-title">AI picture generation (Mode 3)</h2>
+          <div class="setting-row">
+            <div class="setting-info">
+              <label for="aiGeminiKeyInput">Gemini API key (optional browser override)</label>
+              <p>If the site owner has configured a deployment key, visitors need not enter their own.
+                 Only the current word's picture is generated and judged; approved images are saved in this browser.
+                 A shared approval database requires a separately configured endpoint.</p>
+              <p id="aiKeyStatus" class="ai-key-status" role="status"></p>
+            </div>
+            <div class="setting-control ai-key-controls">
+              <input type="password" id="aiGeminiKeyInput" class="text-input" autocomplete="off"
+                placeholder="Paste Google AI Studio key" aria-label="Gemini API key"/>
+              <button id="aiKeySaveBtn" class="btn btn-primary" type="button">Save key on this device</button>
+              <button id="aiKeyClearBtn" class="btn btn-secondary" type="button">Clear device key</button>
             </div>
           </div>
         </div>
@@ -608,7 +634,9 @@
   <!-- Load Scripts -->
   <script src="srs.js?v=19"></script>
   <script src="translation.js?v=25"></script>
+  <script src="ai-image-config.js?v=32"></script>
   <script src="picture-catalog.js?v=30"></script>
-  <script src="app.js?v=30"></script>
+  <script src="ai-picture.js?v=32"></script>
+  <script src="app.js?v=32"></script>
 </body>
 </html>

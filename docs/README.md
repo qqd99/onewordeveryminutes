@@ -230,3 +230,19 @@ This version includes **56 hand-mapped JPEG photographs saved in both `web/photo
 The current collection focuses on concrete vocabulary with clear visual depictions (fruit, vegetables, animals, objects, transport, and places). **Unmapped vocabulary is excluded only from picture mode**, rather than receiving an incorrect or generic image; these words remain available in Modes 1 and 2. The 56 images do not cover all 10,000 words yet. More photos can be added by adding a file and matching Chinese vocabulary in `picture-catalog.js`.
 
 All image sources, authors, and licenses are documented in [`photos/SOURCES.md`](photos/SOURCES.md), including Wikimedia Commons per-file terms, Fruits-360 CC BY-SA 4.0 and historical MIT-licensed examples. Google Images results alone do not grant redistribution rights, so only sources with explicit reuse permissions were used.
+
+## AI-generated image review (v32)
+
+In **Mode 3 — Chinese → Picture**, the 56 curated local photographs remain the instant fallback. If an approved AI illustration already exists for the **current Chinese word and meaning**, that illustration is reused. Otherwise the browser requests **one** new image for the current word via Google's `gemini-2.5-flash-image` API. The other two distractor pictures remain unchanged and are **never generated or judged**. The quiz can still be answered while an AI image is loading.
+
+After answering, the learner may click **Good — save for this word** or **Bad — regenerate this word only**. Only clicking Good writes the generated image to an IndexedDB object store in that browser. Rejected or unreviewed candidates are not written to the approved-image database. Approved images are reused on future visits to the same browser and retained independently of vocabulary progress save slots. A different sense/English gloss gets a different approval key.
+
+### Gemini API key provisioning
+
+The published application can use a **site-wide Gemini API key provided at deploy time** (GitHub repository **Settings → Secrets and variables → Actions → New repository secret**, named `GEMINI_IMAGE_API_KEY`). The GitHub Pages deploy workflow writes `ai-image-config.js` to the deployed artifact using that secret. The live key is **deliberately accessible to every website visitor**: do not treat it as secret after deployment, and restrict usage/quota, billing and API permissions accordingly. The actual key must **not** be committed to this repository: GitHub secret scanning blocks live keys. Alternatively, each visitor may enter their own key in the app's Settings (stored locally in that browser). Without either key, local photos continue to work.
+
+### Shared community approval database
+
+A static GitHub Pages site cannot directly write a shared database. Approved AI images are **saved in IndexedDB on the approving user's device** without any extra setup. Cross-user sharing is wired through an **optional separate HTTPS service**. Configure the GitHub Actions *repository variable* `AI_IMAGE_APPROVAL_ENDPOINT` (without trailing slash) when such a service has been deployed. The client calls `GET <endpoint>/approvals?key=<URL-encoded JSON array [Chinese word, English gloss]>` to reuse another user's approved image and `POST <endpoint>/approvals` with a JSON record (`key`, `src` base64 data URI, `front`, `meaning`, `model`, `approvedAt`) after Good. The GET response should include a safe HTTPS image `src` or supported image data URI. The service is not deployed or supplied by GitHub Pages; no worldwide/shared persistence should be claimed until you connect one. Upload failures do not discard the local approval. Because these endpoints allow public image submissions, deploy with spam controls, storage limits, and moderation.
+
+Gemini image generation incurs API usage and can be rate-limited or unavailable. Original local photographs remain usable whenever generation fails. Image judgments are only shown after revealing the correct answer.

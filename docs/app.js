@@ -89,6 +89,14 @@
     choicesGrid: $("#choicesGrid"),
     photoRetryBtn: $("#photoRetryBtn"),
     photoCredits: $("#photoCredits"),
+    aiReview: $("#aiReview"),
+    aiReviewText: $("#aiReviewText"),
+    aiApproveBtn: $("#aiApproveBtn"),
+    aiRegenerateBtn: $("#aiRegenerateBtn"),
+    aiGeminiKeyInput: $("#aiGeminiKeyInput"),
+    aiKeySaveBtn: $("#aiKeySaveBtn"),
+    aiKeyClearBtn: $("#aiKeyClearBtn"),
+    aiKeyStatus: $("#aiKeyStatus"),
     revealedMeaning: $("#revealedMeaning"),
     exampleCard: $("#exampleCard"),
     exampleHanzi: $("#exampleHanzi"),
@@ -1340,6 +1348,24 @@
   }
 
   function setupLearningSessionControls() {
+    els.aiKeySaveBtn?.addEventListener("click", () => {
+      try {
+        AiPictureSupport.setApiKey(els.aiGeminiKeyInput?.value || "");
+        if (els.aiGeminiKeyInput) els.aiGeminiKeyInput.value = "";
+        if (els.aiKeyStatus) els.aiKeyStatus.textContent = "Gemini key saved in this browser.";
+      } catch (error) {
+        if (els.aiKeyStatus) els.aiKeyStatus.textContent = error.message;
+      }
+    });
+    els.aiKeyClearBtn?.addEventListener("click", () => {
+      AiPictureSupport.setApiKey("");
+      if (els.aiGeminiKeyInput) els.aiGeminiKeyInput.value = "";
+      if (els.aiKeyStatus) els.aiKeyStatus.textContent = "Browser key cleared.";
+    });
+    if (els.aiKeyStatus) els.aiKeyStatus.textContent = AiPictureSupport.getApiKey()
+      ? "Gemini image generation is configured." : "Gemini key not configured. Local photos remain available.";
+    els.aiApproveBtn?.addEventListener("click", () => { void approveCurrentAiPicture(); });
+    els.aiRegenerateBtn?.addEventListener("click", () => { void regenerateCurrentAiPicture(); });
     els.photoRetryBtn?.addEventListener("click", () => {
       if (isPictureMode() && state.currentCard && state.currentQuiz) {
         void loadPicturePhotos(state.currentCard, state.currentQuiz);
@@ -1441,6 +1467,12 @@
     if (!els.photoCredits || !quiz?.photoSources) return;
     els.photoCredits.innerHTML = "";
     quiz.photoSources.forEach((photo, index) => {
+      if (photo.kind === "ai") {
+        const label = document.createElement("span");
+        label.textContent = `Photo ${index + 1}: AI-generated illustration (Gemini)`;
+        els.photoCredits.appendChild(label);
+        return;
+      }
       const link = document.createElement("a");
       link.href = photo.sourceUrl;
       link.target = "_blank";
@@ -1457,6 +1489,130 @@
       }
     });
     els.photoCredits.hidden = false;
+  }
+
+
+  // Only the image belonging to the current Chinese word is ever generated,
+  // voted on, or saved. Distractors always remain existing catalog photos.
+  let activeAiController = null;
+
+  function showAiReview(card, quiz, message = "") {
+    if (!els.aiReview) return;
+    const active = card && quiz && isPictureMode() &&
+      state.currentCard === card && state.currentQuiz === quiz && state.quizAnswered;
+    els.aiReview.hidden = !active;
+    if (!active) return;
+    const candidate = quiz.aiPicture;
+    const hasCandidate = candidate?.kind === "ai";
+    if (els.aiApproveBtn) els.aiApproveBtn.hidden = !hasCandidate || candidate.approved;
+    if (els.aiRegenerateBtn) els.aiRegenerateBtn.hidden = !AiPictureSupport.getApiKey();
+    if (els.aiReviewText) els.aiReviewText.textContent = message ||
+      (candidate?.approved
+        ? "Approved AI picture saved for this word in this browser."
+        : hasCandidate
+          ? "Does the generated picture correctly illustrate " + card.front + "? Judge this picture only; the other two are distractors."
+          : quiz.aiGenerating
+            ? "Generating a picture for " + card.front + "… You can judge it after it appears."
+            : "Using the original picture. Gemini generation is unavailable or not configured.");
+  }
+
+  function applyTargetAiPhoto(card, quiz, picture) {
+    if (state.currentCard !== card || state.currentQuiz !== quiz || !isPictureMode()) return;
+    const correctIndex = quiz.choices.findIndex(choice => choice.isCorrect);
+    const buttons = [...els.choicesGrid.querySelectorAll(".choice-btn-picture")];
+    if (correctIndex < 0 || !buttons[correctIndex]) return;
+    const img = buttons[correctIndex].querySelector("img.choice-photo");
+    if (!img) return;
+    img.src = picture.src;
+    img.hidden = false;
+    quiz.aiPicture = picture;
+    if (Array.isArray(quiz.photoSources)) {
+      quiz.photoSources[correctIndex] = picture;
+    }
+    if (state.quizAnswered) {
+      revealPhotoCredits(quiz);
+      showAiReview(card, quiz);
+    }
+  }
+
+  async function hydrateTargetAiPhoto(card, quiz, force = false) {
+    if (state.currentCard !== card || state.currentQuiz !== quiz || !isPictureMode()) return;
+    if (activeAiController) activeAiController.abort();
+    activeAiController = new AbortController();
+    const controller = activeAiController;
+    quiz.aiGenerating = true;
+    if (state.quizAnswered) showAiReview(card, quiz);
+    try {
+      if (!force) {
+        const approved = await AiPictureSupport.getApproved(card);
+        if (approved) {
+          if (controller.signal.aborted) return;
+          applyTargetAiPhoto(card, quiz, approved);
+          return;
+        }
+        const cached = AiPictureSupport.getCandidate(card);
+        if (cached) {
+          if (controller.signal.aborted) return;
+          applyTargetAiPhoto(card, quiz, cached);
+          return;
+        }
+      }
+      if (!AiPictureSupport.getApiKey()) return;
+      const candidate = await AiPictureSupport.generate(card, {signal: controller.signal});
+      if (controller.signal.aborted || state.currentCard !== card || state.currentQuiz !== quiz) return;
+      AiPictureSupport.setCandidate(card, candidate);
+      applyTargetAiPhoto(card, quiz, candidate);
+    } catch (error) {
+      if (controller.signal.aborted || state.currentCard !== card || state.currentQuiz !== quiz) return;
+      console.warn("Gemini current-word illustration unavailable:", error);
+      quiz.aiError = error.message;
+    } finally {
+      if (!controller.signal.aborted && state.currentCard === card && state.currentQuiz === quiz) {
+        quiz.aiGenerating = false;
+        showAiReview(card, quiz, quiz.aiError
+          ? "Generated image unavailable: " + quiz.aiError + ". You can still use the saved photo."
+          : "");
+      }
+    }
+  }
+
+  async function approveCurrentAiPicture() {
+    const card = state.currentCard, quiz = state.currentQuiz;
+    if (!state.quizAnswered || !isPictureMode() || !quiz?.aiPicture || quiz.aiPicture.approved) return;
+    if (els.aiApproveBtn) els.aiApproveBtn.disabled = true;
+    try {
+      const saved = await AiPictureSupport.saveApproved(card, quiz.aiPicture);
+      if (state.currentCard !== card || state.currentQuiz !== quiz) return;
+      applyTargetAiPhoto(card, quiz, saved);
+      showAiReview(card, quiz, "Saved! This word's AI picture will be reused in this browser.");
+      // A public static GitHub Pages site cannot write to a global database
+      // without a separately configured writable endpoint.
+      try {
+        const sync = await AiPictureSupport.syncShared(saved);
+        if (sync.shared && state.currentCard === card && state.currentQuiz === quiz) {
+          showAiReview(card, quiz, "Saved locally and shared with the image database.");
+        }
+      } catch (error) {
+        if (state.currentCard === card && state.currentQuiz === quiz) {
+          showAiReview(card, quiz, "Saved in this browser. Shared database sync failed: " + error.message);
+        }
+      }
+    } catch (error) {
+      if (state.currentCard === card && state.currentQuiz === quiz) {
+        showAiReview(card, quiz, "Image was not saved: " + error.message);
+      }
+    } finally {
+      if (els.aiApproveBtn) els.aiApproveBtn.disabled = false;
+    }
+  }
+
+  async function regenerateCurrentAiPicture() {
+    const card = state.currentCard, quiz = state.currentQuiz;
+    if (!state.quizAnswered || !isPictureMode() || !card || !quiz || quiz.aiGenerating) return;
+    AiPictureSupport.clearCandidate(card);
+    quiz.aiError = null;
+    // Leave the other two choice images completely untouched.
+    await hydrateTargetAiPhoto(card, quiz, true);
   }
 
   async function loadPicturePhotos(card, quiz) {
@@ -1485,6 +1641,7 @@
       });
       els.quizPrompt.textContent = "Choose the matching photo:";
       if (state.quizAnswered) revealPhotoCredits(quiz);
+      void hydrateTargetAiPhoto(card, quiz);
     } catch (error) {
       if (state.currentCard !== card || state.currentQuiz !== quiz || !isPictureMode()) return;
       console.warn("Could not load a public quiz photo:", error);
@@ -1545,6 +1702,8 @@
     }
     els.choicesGrid.innerHTML = "";
     els.revealedMeaning.hidden = true;
+    if (activeAiController) activeAiController.abort();
+    if (els.aiReview) els.aiReview.hidden = true;
     if (els.photoCredits) { els.photoCredits.hidden = true; els.photoCredits.innerHTML = ""; }
     if (els.photoRetryBtn) els.photoRetryBtn.hidden = true;
     els.quizPrompt.textContent = englishToChinese
@@ -1724,7 +1883,10 @@
       if (isPictureMode() && state.currentCard.example?.text) els.exampleCard.hidden = false;
     }
     els.revealedMeaning.hidden = false;
-    if (isPictureMode()) revealPhotoCredits(state.currentQuiz);
+    if (isPictureMode()) {
+      revealPhotoCredits(state.currentQuiz);
+      showAiReview(state.currentCard, state.currentQuiz);
+    }
 
     // Apply one rating per presentation. Manual Remember/Forget buttons can
     // correct it without counting an additional review of the same card.

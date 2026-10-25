@@ -63,7 +63,7 @@ test("both published pages allow ten word repetitions", () => {
     const html = fs.readFileSync(path.join(root, directory, "index.html"), "utf8");
     const app = fs.readFileSync(path.join(root, directory, "app.js"), "utf8");
     assert.ok(html.includes('id="wordRepeatCount" class="input-number" min="1" max="10"'));
-    assert.ok(html.includes("app.js?v=30"));
+    assert.ok(html.includes("app.js?v=32"));
     assert.ok(app.includes("const count = Math.min(10, Math.max(1, Math.round(Number(repeat) || 2)));"));
     assert.ok(!app.includes("const count = Math.min(5, Math.max(1, Math.round(Number(repeat) || 2)));"));
   }
@@ -84,6 +84,21 @@ test("both published pages use the bundled photographic dataset", () => {
     assert.ok(html.includes("saved with the website"));
     assert.match(catalog, /imageHref/);
     assert.match(html, /photoRetryBtn/);
-    assert.match(sw, /vocab-srs-cache-v31/);
+    assert.match(sw, /vocab-srs-cache-v32/);
   }
+});
+
+test("Gemini picture app and fallback stay synchronized across both publication directories", () => {
+  for (const name of ["ai-picture.js", "ai-image-config.js", "app.js", "index.html", "style.css", "sw.js"]) {
+    const a = fs.readFileSync(path.join(root, "web", name));
+    const b = fs.readFileSync(path.join(root, "docs", name));
+    assert.deepEqual(a, b, name + " must match in web and docs");
+  }
+  const html = fs.readFileSync(path.join(root, "web/index.html"), "utf8");
+  const cache = fs.readFileSync(path.join(root, "web/sw.js"), "utf8");
+  assert.ok(html.includes("ai-picture.js?v=32"));
+  assert.ok(html.includes("ai-image-config.js?v=32"));
+  assert.ok(html.includes("style.css?v=32"));
+  assert.ok(cache.includes("vocab-srs-cache-v32"));
+  assert.ok(cache.includes("ai-picture.js?v=32"));
 });
