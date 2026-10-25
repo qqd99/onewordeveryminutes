@@ -179,7 +179,7 @@ test("remote image failure preserves local fallback and does not expose meanings
     app.indexOf("  function renderCard("));
   assert.match(block, /Commons picture lookup unavailable/);
   assert.match(block, /Photos unavailable/);
-  assert.match(block, /sourceUrl/);
+  assert.match(app, /link.href = photo.sourceUrl/);
   assert.match(app, /isPictureMode\(\) \? visibleCardMeaning/);
   assert.match(html, /Wikimedia Commons/);
   const css = fs.readFileSync(path.join(root, "web/style.css"), "utf8");
