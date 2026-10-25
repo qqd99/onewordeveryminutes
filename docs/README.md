@@ -1,6 +1,6 @@
 # Vocabulary SRS — Web & GitHub Pages Version
 
-A modern, responsive, client-side spaced repetition (SRS) web app for learning Chinese vocabulary. Built with pure HTML5, CSS3, and JavaScript — zero dependencies and zero build steps. Text quizzes work offline; optional public photos need internet.
+A modern, responsive, client-side spaced repetition (SRS) web app for learning Chinese vocabulary. Built with pure HTML5, CSS3, and JavaScript — zero dependencies and zero build steps. Text and locally bundled picture quizzes work offline after the app has been cached.
 
 ---
 
@@ -70,7 +70,7 @@ Then open `http://localhost:8080` in your browser.
   - Export your progress to JSON anytime.
   - Import JSON backups exported by the web app or older versions.
 - **Progressive Web App (PWA)**:
-  - Core learning and text quizzes work offline with the Service Worker cache. Mode 3 public photos need internet access.
+  - Core learning and photo quizzes work offline after the PWA caches its vocabulary and bundled photo files.
   - Installable to home screen on iOS, Android, macOS, and Windows.
 - **Theme Support**: Dark mode and Light mode with persistent preferences.
 
@@ -219,12 +219,14 @@ The maintained application is the standalone website in `web/` (with `docs/` kep
 
 Automatic reading now divides 6–10 repetitions into batches of at most five, and long example sentences into even smaller batches. This avoids lengthy native utterances and online TTS requests that can fail while reading. Native speech completion and online audio duration limits now account for slower/longer readings. Manual **Hear word** and automatic card playback use the same batching logic; interruption by a new card still cancels stale playback.
 
-## Public photo quiz (v29)
+## Offline photographic quiz (v30)
 
-Select **Settings → Learning Mode → Mode 3 — Chinese → Picture**. Each save slot remembers the selected mode across reloads and compatible backup imports. The learner sees the Chinese word and **three photographic choices**, with no meaning text revealed until an answer is chosen; then the correct meaning is revealed in Vietnamese or the selected meaning language. Existing SRS progress, native/online Chinese audio, and other learning modes are unchanged.
+Go to **Settings → Learning Mode → Mode 3 — Chinese → Picture**. Each save slot persists this mode across page reloads and backup imports until it is changed.
 
-Pictures come from **curated Wikipedia article titles**, not an uncontrolled word/image search. The site requests Wikipedia's `pageimages` API with `pilicense=free` and displays the returned Wikimedia thumbnail. There are currently **87 curated photo concepts**; only words that match one of them appear in Picture mode. Abstract or ambiguously illustrated words remain available in Modes 1 and 2. Each answer provides a link to the source image page with photographer and license information.
+The quiz presents a Chinese word and three **real photographs**. Picture choices never reveal textual meanings before the answer; after the choice, the correct meaning appears in Vietnamese or whatever learning language is selected. SRS grading, study audio, and the other text learning modes are unchanged.
 
-**Internet access is needed for photo quizzes.** Browser caching may preserve images between visits, but offline photo availability is not guaranteed. The app blocks answer selection until all three images load, shows a clear error and Retry option if a source is unavailable, and never silently replaces the requested picture with an unrelated illustration. Text modes and the main vocabulary catalog remain offline-capable.
+This version includes **56 hand-mapped JPEG photographs saved in both `web/photos/` and `docs/photos/`**. There are **no live image searches, Google Images scraping, Wikipedia API calls, or externally hosted photo URLs** at quiz time. Each JPEG is pre-cached by the service worker for offline use; they can be served instantly from the same website when loading succeeds. If a file genuinely fails, use the Retry button or reload the website. Localized meanings may still need internet access unless the translation cache or on-device translation is available.
 
-To extend coverage, associate a concrete word/image concept with a specific Wikipedia article in `picture-catalog.js`. Check that the image depicts the intended meaning, carries a free license and includes proper source/credit links.
+The current collection focuses on concrete vocabulary with clear visual depictions (fruit, vegetables, animals, objects, transport, and places). **Unmapped vocabulary is excluded only from picture mode**, rather than receiving an incorrect or generic image; these words remain available in Modes 1 and 2. The 56 images do not cover all 10,000 words yet. More photos can be added by adding a file and matching Chinese vocabulary in `picture-catalog.js`.
+
+All image sources, authors, and licenses are documented in [`photos/SOURCES.md`](photos/SOURCES.md), including Wikimedia Commons per-file terms, Fruits-360 CC BY-SA 4.0 and historical MIT-licensed examples. Google Images results alone do not grant redistribution rights, so only sources with explicit reuse permissions were used.
