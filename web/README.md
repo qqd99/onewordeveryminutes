@@ -218,3 +218,11 @@ The maintained application is the standalone website in `web/` (with `docs/` kep
 ## Automatic speech reliability (v27)
 
 Automatic reading now divides 6–10 repetitions into batches of at most five, and long example sentences into even smaller batches. This avoids lengthy native utterances and online TTS requests that can fail while reading. Native speech completion and online audio duration limits now account for slower/longer readings. Manual **Hear word** and automatic card playback use the same batching logic; interruption by a new card still cancels stale playback.
+
+## Offline picture quiz (v28)
+
+Select **Settings → Learning Mode → Mode 3 — Chinese → Picture**. The mode persists across reloads, save-slot switches, and compatible backup imports until you change it. The card shows Chinese plus **three picture-only answers** from an offline SVG image dataset. After selecting a picture, the correct meaning appears in your chosen language; Chinese pronunciation and SRS grading work as before. The example sentence stays hidden until after answering so it cannot reveal the answer.
+
+The dataset currently contains **115 curated local vector illustrations**, derived from [Lucide](https://lucide.dev) (ISC license; full attribution in `pictures/LICENSE-LUCIDE.txt`). Only vocabulary with a reliably matching illustration is eligible in Mode 3; words with no suitable illustration remain available in text modes. Illustrations are bundled in `pictures/pictures-*.svg` and cached for offline use, with no network image requests. Localizing answer meanings to Vietnamese or another language uses the existing translation feature and may need a connection unless a translation is cached or an on-device translator is available.
+
+To expand the set, add an icon to an SVG sheet and associate a Chinese spelling or exact English definition in `picture-catalog.js`. Avoid ambiguous pictures and never map unrelated words to placeholder images.

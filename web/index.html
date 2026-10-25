@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=25" />
+  <link rel="stylesheet" href="style.css?v=28" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -336,12 +336,13 @@
           <div class="setting-row">
             <div class="setting-info">
               <label for="learningModeSelect">Quiz direction</label>
-              <p>Mode 1 shows Chinese and asks for a meaning in your selected language. Mode 2 shows the selected-language meaning and asks for the Chinese word. Audio remains Chinese in both modes.</p>
+              <p>Mode 1: Chinese → localized meaning. Mode 2: localized meaning → Chinese. Mode 3: Chinese → picture; the localized text meaning appears after answering. Mode 3 uses a curated offline illustration dataset and shows only words with matching pictures. Your selection is saved until changed.</p>
             </div>
             <div class="setting-control">
               <select id="learningModeSelect" class="pack-select">
                 <option value="chinese-to-english">Mode 1 — Chinese → English (default)</option>
-                <option value="english-to-chinese">Mode 2 — English → Chinese</option>
+                <option value="english-to-chinese">Mode 2 — Meaning → Chinese</option>
+                <option value="chinese-to-picture">Mode 3 — Chinese → Picture</option>
               </select>
             </div>
           </div>
@@ -605,6 +606,7 @@
   <!-- Load Scripts -->
   <script src="srs.js?v=19"></script>
   <script src="translation.js?v=25"></script>
-  <script src="app.js?v=27"></script>
+  <script src="picture-catalog.js?v=28"></script>
+  <script src="app.js?v=28"></script>
 </body>
 </html>

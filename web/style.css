@@ -1721,3 +1721,39 @@ input:checked + .slider:before {
   padding: 0.35rem 0.7rem;
   font-size: 0.8rem;
 }
+
+/* Offline picture quiz: locally bundled SVGs; reveal text only after answering. */
+.choices-grid:has(.choice-btn-picture) {
+  max-width: 780px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.choice-btn-picture {
+  min-width: 0;
+  min-height: 152px;
+  padding: 20px 12px 12px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--bg-card-sub);
+}
+.choice-picture {
+  display: block;
+  width: min(100%, 100px);
+  height: 96px;
+  overflow: visible;
+  color: var(--text-main);
+}
+.choice-btn-picture .choice-key-hint {
+  align-self: center;
+  pointer-events: none;
+}
+.choice-btn-picture.wrong { text-decoration: none; }
+.choice-btn-picture.correct .choice-picture { color: var(--success-text); }
+.choice-btn-picture.wrong .choice-picture { color: var(--danger-text); }
+@media (max-width: 520px) {
+  .choices-grid:has(.choice-btn-picture) { gap: 7px; }
+  .choice-btn-picture { min-height: 122px; padding: 14px 5px 10px; }
+  .choice-picture { width: 64px; height: 64px; }
+}
