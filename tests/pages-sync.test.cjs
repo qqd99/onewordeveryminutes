@@ -84,7 +84,7 @@ test("both published pages use the bundled photographic dataset", () => {
     assert.ok(html.includes("saved with the website"));
     assert.match(catalog, /imageHref/);
     assert.match(html, /photoRetryBtn/);
-    assert.match(sw, /vocab-srs-cache-v31/);
+    assert.match(sw, /vocab-srs-cache-v32/);
   }
 });
 

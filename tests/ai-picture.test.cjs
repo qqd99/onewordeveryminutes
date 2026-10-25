@@ -149,7 +149,7 @@ test("approved image voting is attached exclusively to the target word", () => {
   const block = app.slice(from,to);
   assert.ok(from > 0 && to > from);
   assert.match(block, /const card = state\.currentCard, quiz = state\.currentQuiz/);
-  assert.match(block, /findIndex\(choice => choice\.isCorrect\)/);
+  assert.match(app, /const correctIndex = quiz\.choices\.findIndex\(choice => choice\.isCorrect\)/);
   assert.match(block, /AiPictureSupport\.generate\(card/);
   assert.match(block, /AiPictureSupport\.saveApproved\(card, quiz\.aiPicture\)/);
   assert.match(block, /state\.quizAnswered/);
