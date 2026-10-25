@@ -181,18 +181,20 @@ test("mode selector documents picture quiz and persistent selection", () => {
 });
 
 const picturesCode = fs.readFileSync(path.join(root, "web/picture-catalog.js"), "utf8");
+const internetPicturesCode = fs.readFileSync(path.join(root, "web/internet-picture.js"), "utf8");
 function pictureHarness() {
   const context = {
     state: { store: { settings: { learningMode: "chinese-to-picture" } } },
     wasEverReviewed() { return false; },
     Math
   };
-  vm.runInNewContext(picturesCode + "\n" + quizCode +
+  vm.runInNewContext(picturesCode + "\n" + internetPicturesCode +
+    "\nconst InternetPictureSupport = globalThis.InternetPictureSupport;\n" + quizCode +
     "\nglobalThis.api = { PictureCatalog, buildPictureQuiz, getModeEligibleVocabulary, isModeEligibleCard };", context);
   return context.api;
 }
 
-test("Mode 3 only offers supported, locally photographed words", () => {
+test("Mode 3 supports new internet-searchable concrete words while excluding common grammar", () => {
   assert.match(html, /value="chinese-to-picture"/);
   const { PictureCatalog, getModeEligibleVocabulary, isModeEligibleCard } = pictureHarness();
   const cards = [
@@ -207,9 +209,11 @@ test("Mode 3 only offers supported, locally photographed words", () => {
   assert.equal(PictureCatalog.pictureFor(cards[3]), null);
   assert.equal(PictureCatalog.pictureFor(cards[4]), null);
   assert.equal(PictureCatalog.pictureFor(cards[5]), null);
-  assert.equal(getModeEligibleVocabulary(cards).length, 3);
+  assert.equal(getModeEligibleVocabulary(cards).length, 4);
   assert.equal(isModeEligibleCard(cards[0], cards), true);
   assert.equal(isModeEligibleCard(cards[3], cards), false);
+  assert.equal(isModeEligibleCard(cards[4], cards), false);
+  assert.equal(isModeEligibleCard(cards[5], cards), true);
 });
 
 test("Mode 3 choices have three distinct saved photographs", () => {
@@ -229,6 +233,21 @@ test("Mode 3 choices have three distinct saved photographs", () => {
     PictureCatalog.imageHref(choice.image).startsWith("photos/")));
   assert.equal(quiz.correctMeaning, "apple");
   assert.equal(quiz.choices.some(c => c.cardId === "apple-other"), false);
+});
+
+test("Mode 3 builds two local distractors for a new internet-searchable word", () => {
+  const { buildPictureQuiz } = pictureHarness();
+  const cards = [
+    { id: "river", front: "河", meaning: "river" },
+    { id: "apple", front: "苹果", meaning: "apple" },
+    { id: "banana", front: "香蕉", meaning: "banana" },
+    { id: "cat", front: "猫", meaning: "cat" }
+  ];
+  const quiz = buildPictureQuiz(cards, cards[0]);
+  assert.ok(quiz);
+  assert.equal(quiz.choices.filter(choice => choice.isCorrect).length, 1);
+  assert.equal(quiz.choices.find(choice => choice.isCorrect).image, null);
+  assert.ok(quiz.choices.filter(choice => !choice.isCorrect).every(choice => choice.image));
 });
 
 test("Mode 3 pictures hide all choice meanings and example until answer", () => {
@@ -340,5 +359,6 @@ test("no internet lookup is performed while building picture answers", () => {
   assert.match(loading, /Promise\.all/);
   assert.match(loading, /PictureCatalog\.loadPhoto/);
   assert.doesNotMatch(loading, /fetch\(|en\.wikipedia|translate/);
-  assert.match(loading, /Saved photo files could not load/);
+  assert.match(loading, /InternetPictureSupport\.findFor/);
+  assert.match(loading, /Photos unavailable/);
 });
