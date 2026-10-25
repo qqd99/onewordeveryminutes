@@ -4,7 +4,7 @@
  */
 (function(root) {
   "use strict";
-  const MODEL = "gemini-2.5-flash-image";
+  const MODEL = "gemini-3.1-flash-image";
   const DB_NAME = "vocab_srs_word_images_v1";
   const STORE = "approved";
   const memory = new Map();
@@ -136,7 +136,10 @@
         headers: {"Content-Type": "application/json", "x-goog-api-key": apiKey},
         body: JSON.stringify({
           contents: [{role: "user", parts: [{text: promptFor(card)}]}],
-          generationConfig: {responseModalities: ["TEXT", "IMAGE"]}
+          generationConfig: {
+            responseModalities: ["TEXT", "IMAGE"],
+            imageConfig: {aspectRatio: "4:3", imageSize: "512"}
+          }
         })
       }
     );

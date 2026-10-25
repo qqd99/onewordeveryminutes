@@ -69,7 +69,7 @@ function mockIndexedDb() {
 }
 
 test("Gemini API integration is in frontend but credential is absent from source control", () => {
-  assert.match(code, /gemini-2\.5-flash-image/);
+  assert.match(code, /gemini-3\.1-flash-image/);
   assert.match(code, /x-goog-api-key/);
   assert.doesNotMatch(code, /AQ\.[A-Za-z0-9_-]{20,}/);
   assert.match(html, /aiGeminiKeyInput/);
@@ -86,7 +86,7 @@ test("Gemini prompt targets one word only and generated responses use inlineData
     config: {geminiKey:"AQ.testingkeyfortheunitmocktokenonly999", approvalEndpoint:""},
     fetch: async (url, init) => {
       calls += 1;
-      assert.match(url, /gemini-2\.5-flash-image:generateContent$/);
+      assert.match(url, /gemini-3\.1-flash-image:generateContent$/);
       assert.equal(init.headers["x-goog-api-key"], "AQ.testingkeyfortheunitmocktokenonly999");
       const body = JSON.parse(init.body);
       assert.equal(body.contents.length, 1);

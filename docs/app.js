@@ -1352,7 +1352,13 @@
       try {
         AiPictureSupport.setApiKey(els.aiGeminiKeyInput?.value || "");
         if (els.aiGeminiKeyInput) els.aiGeminiKeyInput.value = "";
-        if (els.aiKeyStatus) els.aiKeyStatus.textContent = "Gemini key saved in this browser.";
+        if (els.aiKeyStatus) els.aiKeyStatus.textContent =
+          "Gemini key saved. Rechecking image generation with the current model…";
+        if (isPictureMode() && state.currentCard && state.currentQuiz &&
+            state.currentQuiz.photoSources) {
+          state.currentQuiz.aiError = "";
+          void hydrateTargetAiPhoto(state.currentCard, state.currentQuiz);
+        }
       } catch (error) {
         if (els.aiKeyStatus) els.aiKeyStatus.textContent = error.message;
       }
@@ -1507,13 +1513,18 @@
     if (els.aiApproveBtn) els.aiApproveBtn.hidden = !hasCandidate || candidate.approved;
     if (els.aiRegenerateBtn) els.aiRegenerateBtn.hidden = !AiPictureSupport.getApiKey();
     if (els.aiReviewText) els.aiReviewText.textContent = message ||
-      (candidate?.approved
-        ? "Approved AI picture saved for this word in this browser."
-        : hasCandidate
-          ? "Does the generated picture correctly illustrate " + card.front + "? Judge this picture only; the other two are distractors."
-          : quiz.aiGenerating
-            ? "Generating a picture for " + card.front + "… You can judge it after it appears."
-            : "Using the original picture. Gemini generation is unavailable or not configured.");
+      (quiz.aiError
+        ? "Gemini couldn't generate this word's picture: " + quiz.aiError +
+          ". The original photo remains available. Try Regenerate after checking your key and billing."
+        : candidate?.approved
+          ? "Approved AI picture saved for this word in this browser."
+          : hasCandidate
+            ? "Does this AI image correctly illustrate " + card.front + "? Only this image is being judged; the other two are distractors."
+            : quiz.aiGenerating
+              ? "Generating a picture for " + card.front + "… You can judge it after it appears."
+              : AiPictureSupport.getApiKey()
+                ? "Using the original photo while Gemini prepares an illustration for this word."
+                : "Using the original photo: add a Gemini API key in Settings to generate an AI illustration.");
   }
 
   function applyTargetAiPhoto(card, quiz, picture) {
@@ -1541,6 +1552,7 @@
     activeAiController = new AbortController();
     const controller = activeAiController;
     quiz.aiGenerating = true;
+    quiz.aiError = "";
     if (state.quizAnswered) showAiReview(card, quiz);
     try {
       if (!force) {
@@ -1562,15 +1574,18 @@
       if (controller.signal.aborted || state.currentCard !== card || state.currentQuiz !== quiz) return;
       AiPictureSupport.setCandidate(card, candidate);
       applyTargetAiPhoto(card, quiz, candidate);
+      if (els.aiKeyStatus) els.aiKeyStatus.textContent = "Gemini image generated successfully.";
     } catch (error) {
       if (controller.signal.aborted || state.currentCard !== card || state.currentQuiz !== quiz) return;
       console.warn("Gemini current-word illustration unavailable:", error);
-      quiz.aiError = error.message;
+      quiz.aiError = error.message || String(error);
+      if (els.aiKeyStatus) els.aiKeyStatus.textContent =
+        "Gemini image request failed: " + quiz.aiError;
     } finally {
       if (!controller.signal.aborted && state.currentCard === card && state.currentQuiz === quiz) {
         quiz.aiGenerating = false;
         showAiReview(card, quiz, quiz.aiError
-          ? "Generated image unavailable: " + quiz.aiError + ". You can still use the saved photo."
+          ? "Gemini image failed: " + quiz.aiError + ". The original photo is still available."
           : "");
       }
     }
