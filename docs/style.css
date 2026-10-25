@@ -1722,7 +1722,7 @@ input:checked + .slider:before {
   font-size: 0.8rem;
 }
 
-/* Offline picture quiz: locally bundled SVGs; reveal text only after answering. */
+/* Photo quiz: real, curated public Wikimedia thumbnails with delayed reveal. */
 .choices-grid:has(.choice-btn-picture) {
   max-width: 780px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1730,30 +1730,54 @@ input:checked + .slider:before {
 }
 .choice-btn-picture {
   min-width: 0;
-  min-height: 152px;
-  padding: 20px 12px 12px;
+  min-height: 170px;
+  padding: 10px;
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   background: var(--bg-card-sub);
+  overflow: hidden;
 }
-.choice-picture {
+.choice-photo {
   display: block;
-  width: min(100%, 100px);
-  height: 96px;
-  overflow: visible;
-  color: var(--text-main);
+  width: 100%;
+  height: 135px;
+  object-fit: cover;
+  border-radius: 9px;
+  background: var(--bg-card);
 }
-.choice-btn-picture .choice-key-hint {
-  align-self: center;
-  pointer-events: none;
+.choice-photo[hidden],
+.choice-photo-loading[hidden] { display: none; }
+.choice-photo-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 135px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-muted);
 }
+.choice-btn-picture .choice-key-hint { align-self: center; }
+.choice-btn-picture:disabled { opacity: 0.75; }
+.choice-btn-picture.correct .choice-photo { outline: 3px solid var(--success); }
+.choice-btn-picture.wrong .choice-photo { outline: 3px solid var(--danger); }
 .choice-btn-picture.wrong { text-decoration: none; }
-.choice-btn-picture.correct .choice-picture { color: var(--success-text); }
-.choice-btn-picture.wrong .choice-picture { color: var(--danger-text); }
+.photo-retry-btn { margin: 16px auto 0; }
+.photo-credits {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 9px 16px;
+  font-size: 11px;
+}
+.photo-credits[hidden] { display: none; }
+.photo-credits a { color: var(--text-secondary); text-decoration: underline; }
 @media (max-width: 520px) {
   .choices-grid:has(.choice-btn-picture) { gap: 7px; }
-  .choice-btn-picture { min-height: 122px; padding: 14px 5px 10px; }
-  .choice-picture { width: 64px; height: 64px; }
+  .choice-btn-picture { min-height: 120px; padding: 5px; }
+  .choice-photo { height: 86px; }
+  .choice-photo-loading { min-height: 86px; }
 }

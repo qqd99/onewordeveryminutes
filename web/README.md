@@ -1,6 +1,6 @@
 # Vocabulary SRS — Web & GitHub Pages Version
 
-A modern, responsive, client-side spaced repetition (SRS) web app for learning Chinese vocabulary. Built with pure HTML5, CSS3, and JavaScript — zero dependencies, zero build steps, and 100% offline-ready.
+A modern, responsive, client-side spaced repetition (SRS) web app for learning Chinese vocabulary. Built with pure HTML5, CSS3, and JavaScript — zero dependencies and zero build steps. Text quizzes work offline; optional public photos need internet.
 
 ---
 
@@ -70,7 +70,7 @@ Then open `http://localhost:8080` in your browser.
   - Export your progress to JSON anytime.
   - Import JSON backups exported by the web app or older versions.
 - **Progressive Web App (PWA)**:
-  - Works 100% offline via Service Worker cache.
+  - Core learning and text quizzes work offline with the Service Worker cache. Mode 3 public photos need internet access.
   - Installable to home screen on iOS, Android, macOS, and Windows.
 - **Theme Support**: Dark mode and Light mode with persistent preferences.
 
@@ -219,10 +219,12 @@ The maintained application is the standalone website in `web/` (with `docs/` kep
 
 Automatic reading now divides 6–10 repetitions into batches of at most five, and long example sentences into even smaller batches. This avoids lengthy native utterances and online TTS requests that can fail while reading. Native speech completion and online audio duration limits now account for slower/longer readings. Manual **Hear word** and automatic card playback use the same batching logic; interruption by a new card still cancels stale playback.
 
-## Offline picture quiz (v28)
+## Public photo quiz (v29)
 
-Select **Settings → Learning Mode → Mode 3 — Chinese → Picture**. Each save slot remembers its chosen mode across page reloads and compatible backup imports until you change it in that save. The card shows Chinese plus **three picture-only answers** from an offline SVG image dataset. After selecting a picture, the correct meaning appears in your chosen language; Chinese pronunciation and SRS grading work as before. The example sentence stays hidden until after answering so it cannot reveal the answer.
+Select **Settings → Learning Mode → Mode 3 — Chinese → Picture**. Each save slot remembers the selected mode across reloads and compatible backup imports. The learner sees the Chinese word and **three photographic choices**, with no meaning text revealed until an answer is chosen; then the correct meaning is revealed in Vietnamese or the selected meaning language. Existing SRS progress, native/online Chinese audio, and other learning modes are unchanged.
 
-The dataset currently contains **115 curated local vector illustrations**, derived from [Lucide](https://lucide.dev) (ISC license; full attribution in `pictures/LICENSE-LUCIDE.txt`). Only vocabulary with a reliably matching illustration is eligible in Mode 3; words with no suitable illustration remain available in text modes. Illustrations are bundled in `pictures/pictures-*.svg` and cached for offline use, with no network image requests. Localizing answer meanings to Vietnamese or another language uses the existing translation feature and may need a connection unless a translation is cached or an on-device translator is available.
+Pictures come from **curated Wikipedia article titles**, not an uncontrolled word/image search. The site requests Wikipedia's `pageimages` API with `pilicense=free` and displays the returned Wikimedia thumbnail. There are currently **87 curated photo concepts**; only words that match one of them appear in Picture mode. Abstract or ambiguously illustrated words remain available in Modes 1 and 2. Each answer provides a link to the source image page with photographer and license information.
 
-To expand the set, add an icon to an SVG sheet and associate a Chinese spelling or exact English definition in `picture-catalog.js`. Avoid ambiguous pictures and never map unrelated words to placeholder images.
+**Internet access is needed for photo quizzes.** Browser caching may preserve images between visits, but offline photo availability is not guaranteed. The app blocks answer selection until all three images load, shows a clear error and Retry option if a source is unavailable, and never silently replaces the requested picture with an unrelated illustration. Text modes and the main vocabulary catalog remain offline-capable.
+
+To extend coverage, associate a concrete word/image concept with a specific Wikipedia article in `picture-catalog.js`. Check that the image depicts the intended meaning, carries a free license and includes proper source/credit links.

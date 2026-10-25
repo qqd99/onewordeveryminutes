@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=28" />
+  <link rel="stylesheet" href="style.css?v=29" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -115,7 +115,9 @@
         <div class="quiz-section" id="quizSection">
           <div class="quiz-prompt" id="quizPrompt">Choose the correct meaning</div>
           <div class="choices-grid" id="choicesGrid"></div>
+          <button id="photoRetryBtn" class="btn btn-secondary photo-retry-btn" type="button" hidden>Retry loading photos</button>
           <div class="revealed-meaning-box" id="revealedMeaning" hidden></div>
+          <div id="photoCredits" class="photo-credits" hidden></div>
         </div>
 
         <!-- Example Sentence Card -->
@@ -336,7 +338,7 @@
           <div class="setting-row">
             <div class="setting-info">
               <label for="learningModeSelect">Quiz direction</label>
-              <p>Mode 1: Chinese → localized meaning. Mode 2: localized meaning → Chinese. Mode 3: Chinese → picture; the localized text meaning appears after answering. Mode 3 uses a curated offline illustration dataset and shows only words with matching pictures. Your selection is saved until changed.</p>
+              <p>Mode 1: Chinese → localized meaning. Mode 2: localized meaning → Chinese. Mode 3: Chinese → picture; the localized text meaning appears after answering. Mode 3 uses curated public photos from Wikimedia/Wikipedia. Internet access is required for uncached photos; only words with a matching photo are quizzed. Your selection is saved until changed.</p>
             </div>
             <div class="setting-control">
               <select id="learningModeSelect" class="pack-select">
@@ -606,7 +608,7 @@
   <!-- Load Scripts -->
   <script src="srs.js?v=19"></script>
   <script src="translation.js?v=25"></script>
-  <script src="picture-catalog.js?v=28"></script>
-  <script src="app.js?v=28"></script>
+  <script src="picture-catalog.js?v=29"></script>
+  <script src="app.js?v=29"></script>
 </body>
 </html>

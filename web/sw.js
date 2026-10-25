@@ -1,29 +1,20 @@
 /**
  * Vocabulary SRS Service Worker
- * Caches application shell and vocabulary catalog for 100% offline usage.
+ * Caches the application shell and vocabulary. Public quiz photos require connectivity.
  */
 
-const CACHE_NAME = "vocab-srs-cache-v28";
+const CACHE_NAME = "vocab-srs-cache-v29";
 const ASSETS_TO_CACHE = [
   "./",
   "./index.html",
   "./style.css",
-  "./style.css?v=28",
+  "./style.css?v=29",
   "./picture-catalog.js",
-  "./picture-catalog.js?v=28",
-  "./pictures/pictures-1.svg",
-  "./pictures/pictures-2.svg",
-  "./pictures/pictures-3.svg",
-  "./pictures/pictures-4.svg",
-  "./pictures/pictures-5.svg",
-  "./pictures/pictures-6.svg",
-  "./pictures/pictures-7.svg",
-  "./pictures/pictures-8.svg",
-  "./pictures/pictures-9.svg",
+  "./picture-catalog.js?v=29",
   "./translation.js",
   "./translation.js?v=25",
   "./app.js",
-  "./app.js?v=28",
+  "./app.js?v=29",
   "./srs.js",
   "./srs.js?v=19",
   "./vocabulary.json",

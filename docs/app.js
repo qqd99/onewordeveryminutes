@@ -87,6 +87,8 @@
     pinyinReading: $("#pinyinReading"),
     quizPrompt: $("#quizPrompt"),
     choicesGrid: $("#choicesGrid"),
+    photoRetryBtn: $("#photoRetryBtn"),
+    photoCredits: $("#photoCredits"),
     revealedMeaning: $("#revealedMeaning"),
     exampleCard: $("#exampleCard"),
     exampleHanzi: $("#exampleHanzi"),
@@ -1338,6 +1340,11 @@
   }
 
   function setupLearningSessionControls() {
+    els.photoRetryBtn?.addEventListener("click", () => {
+      if (isPictureMode() && state.currentCard && state.currentQuiz) {
+        void loadPicturePhotos(state.currentCard, state.currentQuiz);
+      }
+    });
     els.retryMeaningTranslationBtn?.addEventListener("click", () => {
       if (state.currentCard && state.currentQuiz) {
         void localizeRenderedCard(state.currentCard, state.currentQuiz, isEnglishToChineseMode());
@@ -1430,6 +1437,54 @@
     }
   }
 
+  function revealPhotoCredits(quiz) {
+    if (!els.photoCredits || !quiz?.photoSources) return;
+    els.photoCredits.innerHTML = "";
+    quiz.photoSources.forEach((photo, index) => {
+      const link = document.createElement("a");
+      link.href = photo.sourceUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = `Photo ${index + 1} source, author & license`;
+      els.photoCredits.appendChild(link);
+    });
+    els.photoCredits.hidden = false;
+  }
+
+  async function loadPicturePhotos(card, quiz) {
+    if (!card || !quiz || state.currentCard !== card || state.currentQuiz !== quiz) return;
+    if (els.photoRetryBtn) els.photoRetryBtn.hidden = true;
+    els.quizPrompt.textContent = "Loading public photos…";
+    const buttons = [...els.choicesGrid.querySelectorAll(".choice-btn-picture")];
+    buttons.forEach(button => { button.disabled = true; });
+    try {
+      // Do not expose an option until all three verified, freely licensed
+      // thumbnails have loaded. Never silently substitute another meaning.
+      const photos = await Promise.all(
+        quiz.choices.map(choice => PictureCatalog.loadPhoto(choice.image))
+      );
+      if (state.currentCard !== card || state.currentQuiz !== quiz || !isPictureMode()) return;
+      quiz.photoSources = photos;
+      photos.forEach((photo, index) => {
+        const button = buttons[index];
+        const picture = button?.querySelector("img.choice-photo");
+        if (!picture) return;
+        picture.src = photo.src;
+        picture.hidden = false;
+        const loading = button.querySelector(".choice-photo-loading");
+        if (loading) loading.hidden = true;
+        button.disabled = false;
+      });
+      els.quizPrompt.textContent = "Choose the matching photo:";
+      if (state.quizAnswered) revealPhotoCredits(quiz);
+    } catch (error) {
+      if (state.currentCard !== card || state.currentQuiz !== quiz || !isPictureMode()) return;
+      console.warn("Could not load a public quiz photo:", error);
+      els.quizPrompt.textContent = "Public photos unavailable. Check your internet connection and retry.";
+      if (els.photoRetryBtn) els.photoRetryBtn.hidden = false;
+    }
+  }
+
   function renderCard(card, { autoPlay = true } = {}) {
     if (state.learningStatus !== "active" || !card) return;
     // Avoid double-cancelling speech right before a new reading starts.
@@ -1482,6 +1537,8 @@
     }
     els.choicesGrid.innerHTML = "";
     els.revealedMeaning.hidden = true;
+    if (els.photoCredits) { els.photoCredits.hidden = true; els.photoCredits.innerHTML = ""; }
+    if (els.photoRetryBtn) els.photoRetryBtn.hidden = true;
     els.quizPrompt.textContent = englishToChinese
       ? "Choose the correct Chinese word:"
       : pictureMode ? "Choose the matching picture:" : "Choose the correct meaning:";
@@ -1494,17 +1551,21 @@
       btn.dataset.choiceId = choice.id;
 
       if (pictureMode) {
-        // External SVG <use> references only locally bundled, curated image IDs.
-        // No text or answer meaning enters the button before an answer.
-        const illustration = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-        illustration.classList.add("choice-picture");
-        illustration.setAttribute("viewBox", "0 0 24 24");
-        illustration.setAttribute("aria-hidden", "true");
-        const symbol = document.createElementNS("http://www.w3.org/2000/svg", "use");
-        symbol.setAttribute("href", PictureCatalog.imageHref(choice.image));
-        illustration.appendChild(symbol);
-        btn.appendChild(illustration);
-        btn.setAttribute("aria-label", `Picture option ${index + 1}`);
+        // Do not leak the word meaning in alt text, captions, or option labels.
+        const photo = document.createElement("img");
+        photo.className = "choice-photo";
+        photo.alt = "";
+        photo.loading = "eager";
+        photo.decoding = "async";
+        photo.referrerPolicy = "no-referrer";
+        photo.hidden = true;
+        const loading = document.createElement("span");
+        loading.className = "choice-photo-loading";
+        loading.textContent = "Loading photo…";
+        btn.appendChild(photo);
+        btn.appendChild(loading);
+        btn.disabled = true;
+        btn.setAttribute("aria-label", `Photo option ${index + 1}`);
       } else {
         const spanText = document.createElement("span");
         spanText.textContent = choice.text;
@@ -1520,6 +1581,8 @@
       btn.addEventListener("click", () => handleQuizAnswer(choice, btn));
       els.choicesGrid.appendChild(btn);
     });
+
+    if (pictureMode) void loadPicturePhotos(card, state.currentQuiz);
 
     // Example Card & Word Breakdown
     if (card.example && card.example.text) {
@@ -1653,6 +1716,7 @@
       if (isPictureMode() && state.currentCard.example?.text) els.exampleCard.hidden = false;
     }
     els.revealedMeaning.hidden = false;
+    if (isPictureMode()) revealPhotoCredits(state.currentQuiz);
 
     // Apply one rating per presentation. Manual Remember/Forget buttons can
     // correct it without counting an additional review of the same card.
