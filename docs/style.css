@@ -1743,7 +1743,8 @@ input:checked + .slider:before {
   display: block;
   width: 100%;
   height: 135px;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
   border-radius: 9px;
   background: var(--bg-card);
 }
