@@ -165,7 +165,7 @@ test("automatic word audio stays Chinese in both modes", () => {
 test("learning mode setting persists and backup import validates both modes", () => {
   const settings = section("  function setupSettings()", "  \/\* -------------------------------------------------------------\n     11. KEYBOARD");
   assert.match(settings, /state\.store\.settings\.learningMode = nextMode/);
-  assert.match(settings, /\["chinese-to-english", "english-to-chinese"\]\.includes\(importedSettings\.learningMode\)/);
+  assert.match(settings, /\["chinese-to-english", "english-to-chinese", "chinese-to-picture"\]\.includes\(importedSettings\.learningMode\)/);
   assert.match(settings, /learningModeSelect\.value = state\.store\.settings\.learningMode/);
 });
 
@@ -175,6 +175,89 @@ test("invalid learning modes in any save fall back to Mode 1", () => {
   assert.match(normalize, /english-to-chinese/);
 });
 
-test("mode selector copy explicitly says audio remains Chinese", () => {
-  assert.match(html, /Audio remains Chinese in both modes/);
+test("mode selector documents picture quiz and persistent selection", () => {
+  assert.match(html, /Chinese → Picture/);
+  assert.match(html, /Your selection is saved until changed/);
+});
+
+const picturesCode = fs.readFileSync(path.join(root, "web/picture-catalog.js"), "utf8");
+function pictureHarness() {
+  const context = {
+    state: { store: { settings: { learningMode: "chinese-to-picture" } } },
+    wasEverReviewed() { return false; },
+    Math
+  };
+  vm.runInNewContext(picturesCode + "\n" + quizCode +
+    "\nglobalThis.api = { PictureCatalog, buildPictureQuiz, getModeEligibleVocabulary, isModeEligibleCard };", context);
+  return context.api;
+}
+
+test("Mode 3 uses bundled pictures only for clearly illustrated words", () => {
+  assert.match(html, /value="chinese-to-picture"/);
+  const { PictureCatalog, getModeEligibleVocabulary, isModeEligibleCard } = pictureHarness();
+  const cards = [
+    { id: "apple", front: "苹果", meaning: "apple" },
+    { id: "banana", front: "香蕉", meaning: "banana" },
+    { id: "dog", front: "狗", meaning: "dog" },
+    { id: "hello", front: "你好", meaning: "hello" },
+    { id: "light", front: "轻", meaning: "light" },
+    { id: "ambiguous", front: "水果", meaning: "fruit" }
+  ];
+  assert.equal(PictureCatalog.pictureFor(cards[0]), "apple");
+  assert.equal(PictureCatalog.pictureFor(cards[3]), null);
+  assert.equal(PictureCatalog.pictureFor(cards[4]), null);
+  assert.equal(PictureCatalog.pictureFor(cards[5]), null);
+  assert.equal(getModeEligibleVocabulary(cards).length, 3);
+  assert.equal(isModeEligibleCard(cards[0], cards), true);
+  assert.equal(isModeEligibleCard(cards[3], cards), false);
+});
+
+test("Mode 3 picture choices have three distinct locally bundled SVG images", () => {
+  const { PictureCatalog, buildPictureQuiz } = pictureHarness();
+  const cards = [
+    { id: "apple", front: "苹果", meaning: "apple" },
+    { id: "banana", front: "香蕉", meaning: "banana" },
+    { id: "grape", front: "葡萄", meaning: "grapes" },
+    { id: "dog", front: "狗", meaning: "dog" },
+    { id: "apple-other", front: "苹果果", meaning: "apple" }
+  ];
+  const quiz = buildPictureQuiz(cards, cards[0]);
+  assert.equal(quiz.choices.length, 3);
+  assert.equal(quiz.choices.filter(choice => choice.isCorrect).length, 1);
+  assert.equal(new Set(quiz.choices.map(choice => choice.image)).size, 3);
+  assert.ok(quiz.choices.every(choice =>
+    PictureCatalog.imageHref(choice.image).startsWith("pictures/pictures-")));
+  assert.equal(quiz.correctMeaning, "apple");
+  assert.equal(quiz.choices.some(c => c.cardId === "apple-other"), false);
+});
+
+test("Mode 3 pictures hide all choice meanings and example until answer", () => {
+  const render = section("  function renderCard(", "  function rateCurrentCard(");
+  const answer = section("  function handleQuizAnswer(", "  function presentNextCard(");
+  assert.match(render, /buildPictureQuiz/);
+  assert.match(render, /document\.createElementNS\("http:\/\/www\.w3\.org\/2000\/svg", "svg"\)/);
+  assert.match(render, /btn\.setAttribute\("aria-label",/);
+  assert.match(render, /exampleCard\.hidden = englishToChinese \|\| pictureMode/);
+  assert.match(answer, /isPictureMode\(\) \? visibleCardMeaning/);
+  assert.match(answer, /exampleCard\.hidden = false/);
+});
+
+test("Mode 3 reveals the chosen meaning language, including after translation completes", () => {
+  const localized = section("  async function localizeRenderedCard(", "  function renderCard(");
+  assert.match(localized, /!englishToChinese && !isPictureMode\(\)/);
+  assert.match(localized, /visibleCardMeaning = returnedMeaning/);
+  assert.match(localized, /isPictureMode\(\) \? visibleCardMeaning/);
+  assert.match(localized, /state\.quizAnswered/);
+});
+
+test("illustration sheets, attribution and cached offline assets are present", () => {
+  const sheetPaths = Array.from({length: 9}, (_, i) => "pictures/pictures-" + (i+1) + ".svg");
+  const cache = fs.readFileSync(path.join(root, "web/sw.js"), "utf8");
+  const license = fs.readFileSync(path.join(root, "web/pictures/LICENSE-LUCIDE.txt"), "utf8");
+  assert.match(license, /ISC License/);
+  assert.match(cache, /picture-catalog\.js/);
+  assert.ok(sheetPaths.every(name => {
+    const svg = fs.readFileSync(path.join(root, "web", name), "utf8");
+    return svg.includes("<symbol") && cache.includes("./" + name);
+  }));
 });

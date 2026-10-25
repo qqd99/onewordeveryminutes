@@ -268,3 +268,12 @@ test("Vietnamese meaning-language preference survives a page reload", () => {
   // Guard against forgetting to hydrate the selects during init again.
   assert.ok(source.includes("  async function init() {\n    loadStoredState();\n    syncMeaningLanguageControls();"));
 });
+
+test("Picture learning mode persists after saving and reloading the browser", () => {
+  const h = createHarness();
+  h.state.store.settings.learningMode = "chinese-to-picture";
+  assert.equal(h.api.saveStoredState(), true);
+  const restored = createHarness(null, slots(h));
+  assert.equal(restored.state.store.settings.learningMode, "chinese-to-picture");
+  assert.equal(restored.els.saveSlotSelect.value, "main");
+});

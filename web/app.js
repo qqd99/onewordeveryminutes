@@ -210,7 +210,7 @@
     const savedRepeats = Number(normalized.settings.wordRepeat);
     normalized.settings.wordRepeat = Number.isFinite(savedRepeats) && savedRepeats >= 1
       ? Math.min(10, Math.round(savedRepeats)) : 2;
-    if (!["chinese-to-english", "english-to-chinese"].includes(normalized.settings.learningMode)) {
+    if (!["chinese-to-english", "english-to-chinese", "chinese-to-picture"].includes(normalized.settings.learningMode)) {
       normalized.settings.learningMode = "chinese-to-english";
     }
     normalized.settings.translationLanguage = typeof TranslationSupport !== "undefined"
@@ -1118,12 +1118,64 @@
     return { choices, correctMeaning, correctWord, correctLength };
   }
 
+  function buildPictureQuiz(vocabulary, card) {
+    const image = PictureCatalog.pictureFor(card);
+    if (!image) return null;
+    const group = PictureCatalog.groupFor(image);
+    const alternatives = vocabulary
+      .filter(item => item.id !== card.id)
+      .map(item => ({ card: item, image: PictureCatalog.pictureFor(item) }))
+      .filter(item => item.image && item.image !== image);
+    // Shuffle first, then prioritize semantically related distractors.
+    for (let i = alternatives.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [alternatives[i], alternatives[j]] = [alternatives[j], alternatives[i]];
+    }
+    alternatives.sort((a, b) =>
+      Number(PictureCatalog.groupFor(b.image) === group) -
+      Number(PictureCatalog.groupFor(a.image) === group));
+    const usedImages = new Set([image]);
+    const distractors = [];
+    for (const item of alternatives) {
+      if (usedImages.has(item.image)) continue;
+      usedImages.add(item.image);
+      distractors.push({
+        id: `distractor-${distractors.length}`,
+        cardId: item.card.id,
+        text: item.card.meaning,
+        image: item.image,
+        isCorrect: false
+      });
+      if (distractors.length === 2) break;
+    }
+    if (distractors.length !== 2) return null;
+    const choices = [
+      { id: "correct", cardId: card.id, text: card.meaning, image, isCorrect: true },
+      ...distractors
+    ];
+    for (let i = choices.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [choices[i], choices[j]] = [choices[j], choices[i]];
+    }
+    return { choices, correctMeaning: card.meaning };
+  }
+
   function isEnglishToChineseMode() {
     return state.store?.settings?.learningMode === "english-to-chinese";
   }
 
+  function isPictureMode() {
+    return state.store?.settings?.learningMode === "chinese-to-picture";
+  }
+
   function getModeEligibleVocabulary(vocabulary) {
     const cards = Array.isArray(vocabulary) ? vocabulary : [];
+    if (isPictureMode()) {
+      if (typeof PictureCatalog === "undefined") return [];
+      const illustrated = cards.filter(card => PictureCatalog.pictureFor(card));
+      return new Set(illustrated.map(card => PictureCatalog.pictureFor(card))).size >= 3
+        ? illustrated : [];
+    }
     if (!isEnglishToChineseMode()) return cards;
 
     // Mode 2 must never reveal the answer by word length. Only present cards
@@ -1140,7 +1192,8 @@
   }
 
   function isModeEligibleCard(card, vocabulary = state.activePack?.cards || []) {
-    if (!card || !isEnglishToChineseMode()) return Boolean(card);
+    if (!card) return false;
+    if (!isEnglishToChineseMode() && !isPictureMode()) return true;
     const targetId = card.id;
     return getModeEligibleVocabulary(vocabulary).some(item => item.id === targetId);
   }
@@ -1241,7 +1294,13 @@
     if (!state.activePack || state.learningStatus === "active") return;
     state.learningStatus = "active";
     const card = getStartingCard();
-    if (card) renderCard(card, { autoPlay: true });
+    if (!card) {
+      state.learningStatus = "idle";
+      showToast("This pack needs at least three distinct illustrated words for Picture mode.");
+      updateLearningSessionUi();
+      return;
+    }
+    renderCard(card, { autoPlay: true });
     updateLearningSessionUi();
     scheduleNextReminder();
   }
@@ -1263,7 +1322,7 @@
     state.learningStatus = "active";
 
     const currentIsValid = state.currentCard &&
-      state.activePack.cards.some(card => card.id === state.currentCard.id);
+      isModeEligibleCard(state.currentCard, state.activePack.cards);
     if (currentIsValid) {
       updateLearningSessionUi();
       if (state.store.settings.readWords !== false ||
@@ -1317,7 +1376,7 @@
       els.hanziTerm.textContent = target === "en"
         ? visibleCardMeaning : "Translating meaning…";
     }
-    else for (const choice of quiz.choices) {
+    else if (!isPictureMode()) for (const choice of quiz.choices) {
       const button = [...els.choicesGrid.querySelectorAll(".choice-btn")]
         .find(element => element.dataset.choiceId === choice.id);
       if (button?.firstElementChild) button.firstElementChild.textContent = choice.text;
@@ -1327,7 +1386,7 @@
       const reading = card.reading ? ` · ${card.reading}` : "";
       els.revealedMeaning.textContent = englishToChinese
         ? `Answer: ${card.front}${reading} — ${card.meaning}`
-        : `Meaning: ${quiz.correctMeaning}`;
+        : `Meaning: ${isPictureMode() ? visibleCardMeaning : quiz.correctMeaning}`;
     }
     if (target === "en") return;
 
@@ -1336,7 +1395,7 @@
       localized = await TranslationSupport.localizePresentation(
         card, quiz, target,
         TranslationSupport.sourceLanguage(state.activePack),
-        !englishToChinese, !englishToChinese,
+        !englishToChinese && !isPictureMode(), !englishToChinese,
         state.activePack?.cards || []
       );
     } catch (error) {
@@ -1354,10 +1413,13 @@
         showMeaningTranslationStatus("Direct translation unavailable. Showing the original English definition.", true);
       }
     }
-    else for (const choice of localized.quiz.choices) {
+    else if (!isPictureMode()) for (const choice of localized.quiz.choices) {
       const button = [...els.choicesGrid.querySelectorAll(".choice-btn")]
         .find(element => element.dataset.choiceId === choice.id);
       if (button?.firstElementChild) button.firstElementChild.textContent = choice.text;
+    }
+    if (isPictureMode() && returnedMeaning === card.meaning) {
+      showMeaningTranslationStatus("Translation unavailable. Showing the original English meaning.", true);
     }
     els.exampleEnglish.textContent = localized.card.example?.meaning || "";
     if (state.quizAnswered) {
@@ -1401,6 +1463,7 @@
     // Learning direction changes only the visual quiz. Speech always uses
     // card.front / card.speechText, so Mode 2 still says the Chinese word.
     const englishToChinese = isEnglishToChineseMode();
+    const pictureMode = isPictureMode();
     els.hanziTerm.textContent = englishToChinese ? (card.meaning || "—") : card.front;
     els.hanziTerm.classList.toggle("english-prompt", englishToChinese);
     els.pinyinReading.hidden = englishToChinese;
@@ -1409,27 +1472,49 @@
     // Quiz Section
     state.currentQuiz = englishToChinese
       ? buildChineseQuiz(state.activePack.cards, card, state.store.progress)
-      : buildMeaningQuiz(state.activePack.cards, card, state.store.progress);
+      : pictureMode
+        ? buildPictureQuiz(state.activePack.cards, card)
+        : buildMeaningQuiz(state.activePack.cards, card, state.store.progress);
+    if (!state.currentQuiz) {
+      showToast("This word has no distinct picture choices; choosing another word.");
+      presentNextCard({ autoPlay: false });
+      return;
+    }
     els.choicesGrid.innerHTML = "";
     els.revealedMeaning.hidden = true;
     els.quizPrompt.textContent = englishToChinese
       ? "Choose the correct Chinese word:"
-      : "Choose the correct meaning:";
+      : pictureMode ? "Choose the matching picture:" : "Choose the correct meaning:";
 
     state.currentQuiz.choices.forEach((choice, index) => {
       const btn = document.createElement("button");
-      btn.className = englishToChinese ? "choice-btn choice-btn-chinese" : "choice-btn";
+      btn.className = pictureMode ? "choice-btn choice-btn-picture"
+        : englishToChinese ? "choice-btn choice-btn-chinese" : "choice-btn";
       btn.type = "button";
       btn.dataset.choiceId = choice.id;
 
-      const spanText = document.createElement("span");
-      spanText.textContent = choice.text;
+      if (pictureMode) {
+        // External SVG <use> references only locally bundled, curated image IDs.
+        // No text or answer meaning enters the button before an answer.
+        const illustration = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        illustration.classList.add("choice-picture");
+        illustration.setAttribute("viewBox", "0 0 24 24");
+        illustration.setAttribute("aria-hidden", "true");
+        const symbol = document.createElementNS("http://www.w3.org/2000/svg", "use");
+        symbol.setAttribute("href", PictureCatalog.imageHref(choice.image));
+        illustration.appendChild(symbol);
+        btn.appendChild(illustration);
+        btn.setAttribute("aria-label", `Picture option ${index + 1}`);
+      } else {
+        const spanText = document.createElement("span");
+        spanText.textContent = choice.text;
+        btn.appendChild(spanText);
+      }
 
       const keyHint = document.createElement("span");
       keyHint.className = "choice-key-hint";
       keyHint.textContent = `${index + 1}`;
 
-      btn.appendChild(spanText);
       btn.appendChild(keyHint);
 
       btn.addEventListener("click", () => handleQuizAnswer(choice, btn));
@@ -1438,7 +1523,7 @@
 
     // Example Card & Word Breakdown
     if (card.example && card.example.text) {
-      els.exampleCard.hidden = englishToChinese;
+      els.exampleCard.hidden = englishToChinese || pictureMode;
       els.exampleHanzi.textContent = card.example.text;
       els.examplePinyin.textContent = card.example.reading || "";
       els.exampleEnglish.textContent = card.example.meaning || "";
@@ -1564,7 +1649,8 @@
         `Answer: ${state.currentCard.front}${reading} — ${els.hanziTerm.textContent || visibleCardMeaning}`;
       if (state.currentCard.example?.text) els.exampleCard.hidden = false;
     } else {
-      els.revealedMeaning.textContent = `Meaning: ${state.currentQuiz.correctMeaning}`;
+      els.revealedMeaning.textContent = `Meaning: ${isPictureMode() ? visibleCardMeaning : state.currentQuiz.correctMeaning}`;
+      if (isPictureMode() && state.currentCard.example?.text) els.exampleCard.hidden = false;
     }
     els.revealedMeaning.hidden = false;
 
@@ -2334,14 +2420,18 @@
     if (els.learningModeSelect) {
       els.learningModeSelect.value = state.store.settings.learningMode || "chinese-to-english";
       els.learningModeSelect.addEventListener("change", (e) => {
-        const nextMode = e.target.value === "english-to-chinese"
-          ? "english-to-chinese"
-          : "chinese-to-english";
+        const nextMode = ["chinese-to-english", "english-to-chinese", "chinese-to-picture"].includes(e.target.value)
+          ? e.target.value : "chinese-to-english";
         state.store.settings.learningMode = nextMode;
         saveStoredState();
-        showToast(nextMode === "english-to-chinese"
-          ? "Mode 2 selected: English → Chinese. Applies to the next card."
-          : "Mode 1 selected: Chinese → English. Applies to the next card.");
+        if (state.learningStatus === "active" && state.activePack) {
+          presentNextCard({ autoPlay: false });
+        }
+        showToast(nextMode === "chinese-to-picture"
+          ? "Mode 3 selected: Chinese → Picture. Saved until changed."
+          : nextMode === "english-to-chinese"
+            ? "Mode 2 selected: Meaning → Chinese. Saved until changed."
+            : "Mode 1 selected: Chinese → Meaning. Saved until changed.");
       });
     }
 
@@ -2579,7 +2669,7 @@
           if (typeof importedSettings.readSentences === "boolean") {
             state.store.settings.readSentences = importedSettings.readSentences;
           }
-          if (["chinese-to-english", "english-to-chinese"].includes(importedSettings.learningMode)) {
+          if (["chinese-to-english", "english-to-chinese", "chinese-to-picture"].includes(importedSettings.learningMode)) {
             state.store.settings.learningMode = importedSettings.learningMode;
           }
           if (["auto", "online", "speechSynthesis"].includes(importedSettings.audioEngine)) {

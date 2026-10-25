@@ -163,6 +163,7 @@ test("reverse quiz shows translation progress and updates revealed answers", asy
   let resolveTranslation;
   const context = vm.createContext({
     state, els,
+    isPictureMode: () => false,
     TranslationSupport: {
       normalizeLanguage: language => language,
       sourceLanguage: () => "zh-CN",
@@ -255,6 +256,7 @@ test("reverse quiz keeps original meaning readable with a separate retry indicat
   };
   const context = vm.createContext({
     state, els, console,
+    isPictureMode: () => false,
     TranslationSupport: {
       normalizeLanguage: x => x,
       sourceLanguage: () => "zh-CN",
@@ -383,4 +385,48 @@ test("Translate tab's known-word breakdown uses source word rather than English 
   assert.match(app, /translateLearningWord\(w, target, card\.meaning \|\| ""\)/);
   assert.doesNotMatch(app, /TranslationSupport\.translateText\(card\.meaning \|\| "", target, "en"\)/);
   assert.match(app, /TranslationSupport\.enableOnDeviceTranslation\(\s*target, TranslationSupport\.sourceLanguage\(state\.activePack\)/);
+});
+
+test("picture mode reveals the Vietnamese meaning if translation finishes after answering", async () => {
+  const app = fs.readFileSync(path.join(root, "web", "app.js"), "utf8");
+  const start = app.indexOf("  let visibleTranslationGeneration = 0;");
+  const end = app.indexOf("  function renderCard(", start);
+  const pictureCard = { id: "apple", front: "苹果", meaning: "apple" };
+  const pictureQuiz = {
+    choices: [
+      { id: "correct", cardId: "apple", image: "apple", text: "apple", isCorrect: true },
+      { id: "other", cardId: "dog", image: "dog", text: "dog", isCorrect: false }
+    ],
+    correctMeaning: "apple"
+  };
+  const state = {
+    store: { settings: { translationLanguage: "vi" } },
+    currentCard: pictureCard, currentQuiz: pictureQuiz, quizAnswered: false
+  };
+  const els = {
+    hanziTerm: { textContent: "" },
+    choicesGrid: { querySelectorAll() { throw new Error("Picture options must not receive translated text"); } },
+    exampleEnglish: { textContent: "" },
+    revealedMeaning: { textContent: "" }
+  };
+  let done;
+  const context = vm.createContext({
+    state, els,
+    isPictureMode: () => true,
+    TranslationSupport: {
+      normalizeLanguage: x => x,
+      sourceLanguage: () => "zh-CN",
+      localizePresentation: () => new Promise(resolve => { done = resolve; })
+    }
+  });
+  vm.runInContext(app.slice(start, end) + "\nglobalThis.localize = localizeRenderedCard;", context);
+  const pending = context.localize(pictureCard, pictureQuiz, false);
+  state.quizAnswered = true;
+  done({
+    card: { ...pictureCard, meaning: "quả táo" },
+    quiz: pictureQuiz
+  });
+  await pending;
+  assert.equal(els.revealedMeaning.textContent, "Meaning: quả táo");
+  assert.equal(els.hanziTerm.textContent, "", "Chinese word must stay visible, not become the meaning");
 });
