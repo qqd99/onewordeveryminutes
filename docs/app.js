@@ -1445,8 +1445,16 @@
       link.href = photo.sourceUrl;
       link.target = "_blank";
       link.rel = "noopener noreferrer";
-      link.textContent = `Photo ${index + 1} source, author & license`;
+      link.textContent = `Photo ${index + 1} source / credit`;
       els.photoCredits.appendChild(link);
+      if (photo.licenseUrl && photo.licenseUrl !== photo.sourceUrl) {
+        const license = document.createElement("a");
+        license.href = photo.licenseUrl;
+        license.target = "_blank";
+        license.rel = "noopener noreferrer";
+        license.textContent = `Photo ${index + 1} license`;
+        els.photoCredits.appendChild(license);
+      }
     });
     els.photoCredits.hidden = false;
   }
@@ -1454,12 +1462,12 @@
   async function loadPicturePhotos(card, quiz) {
     if (!card || !quiz || state.currentCard !== card || state.currentQuiz !== quiz) return;
     if (els.photoRetryBtn) els.photoRetryBtn.hidden = true;
-    els.quizPrompt.textContent = "Loading public photos…";
+    els.quizPrompt.textContent = "Loading saved photos…";
     const buttons = [...els.choicesGrid.querySelectorAll(".choice-btn-picture")];
     buttons.forEach(button => { button.disabled = true; });
     try {
-      // Do not expose an option until all three verified, freely licensed
-      // thumbnails have loaded. Never silently substitute another meaning.
+      // Local photographs are preloaded to guarantee that all three options
+      // are visible before the learner can answer. No image search is performed.
       const photos = await Promise.all(
         quiz.choices.map(choice => PictureCatalog.loadPhoto(choice.image))
       );
@@ -1480,7 +1488,7 @@
     } catch (error) {
       if (state.currentCard !== card || state.currentQuiz !== quiz || !isPictureMode()) return;
       console.warn("Could not load a public quiz photo:", error);
-      els.quizPrompt.textContent = "Public photos unavailable. Check your internet connection and retry.";
+      els.quizPrompt.textContent = "Saved photo files could not load. Refresh the page or retry.";
       if (els.photoRetryBtn) els.photoRetryBtn.hidden = false;
     }
   }
