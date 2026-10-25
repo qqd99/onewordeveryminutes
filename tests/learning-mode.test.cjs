@@ -255,15 +255,15 @@ test("public photo mode bundles no pictograms and shows source/license links aft
   const cache = fs.readFileSync(path.join(root, "web/sw.js"), "utf8");
   const render = section("  function revealPhotoCredits(", "  function renderCard(");
   const css = fs.readFileSync(path.join(root, "web/style.css"), "utf8");
-  assert.match(cache, /picture-catalog\\.js/);
-  assert.doesNotMatch(cache, /pictures\\/pictures-/);
+  assert.ok(cache.includes("picture-catalog.js"));
+  assert.ok(!cache.includes("pictures/pictures-"));
   assert.match(html, /id="photoRetryBtn"/);
   assert.match(html, /id="photoCredits"/);
   assert.match(render, /loadPicturePhotos/);
   assert.match(render, /sourceUrl/);
   assert.match(render, /author & license/);
   assert.match(css, /object-fit: cover/);
-  assert.doesNotMatch(css, /\\.choice-picture \\{/);
+  assert.ok(!css.includes(".choice-picture {"));
 });
 
 test("photo catalog fetches licensed Wikimedia thumbnails and checks image loading", async () => {
@@ -299,7 +299,7 @@ test("photo catalog fetches licensed Wikimedia thumbnails and checks image loadi
   assert.equal(query.searchParams.get("titles"), "Apple");
   assert.equal(query.searchParams.get("origin"), "*");
   assert.equal(pic.src, "https://upload.wikimedia.org/wikipedia/commons/7/7e/Apple-001.jpg");
-  assert.match(pic.sourceUrl, /wikipedia\\.org\\/wiki\\/File:/);
+  assert.ok(pic.sourceUrl.includes("/wiki/File:"));
   await context.api.loadPhoto("apple");
   assert.equal(calls.length, 1, "successful photos are cached in memory");
 });
