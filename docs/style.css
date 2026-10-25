@@ -1782,3 +1782,23 @@ input:checked + .slider:before {
   .choice-photo { height: 86px; }
   .choice-photo-loading { min-height: 86px; }
 }
+
+/* User approval only appears after the target word is answered. */
+.ai-picture-review {
+  max-width: 780px;
+  margin: 15px auto 0;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-card-sub);
+}
+.ai-picture-review[hidden] { display: none; }
+.ai-picture-review p { margin: 0 0 10px; font-size: 13px; color: var(--text-main); }
+.ai-picture-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.ai-picture-actions .btn[hidden] { display: none; }
+.ai-key-controls { display: flex; flex-wrap: wrap; gap: 8px; max-width: 320px; }
+.ai-key-controls .text-input { width: 100%; max-width: 320px; }
+.ai-key-status { font-size: 12px; color: var(--text-secondary); }
+@media (max-width: 520px) {
+  .ai-picture-actions .btn { flex: 1 1 100%; }
+}
