@@ -192,7 +192,7 @@ function pictureHarness() {
   return context.api;
 }
 
-test("Mode 3 uses bundled pictures only for clearly illustrated words", () => {
+test("Mode 3 only offers curated public photos for clearly illustrated words", () => {
   assert.match(html, /value="chinese-to-picture"/);
   const { PictureCatalog, getModeEligibleVocabulary, isModeEligibleCard } = pictureHarness();
   const cards = [
@@ -212,7 +212,7 @@ test("Mode 3 uses bundled pictures only for clearly illustrated words", () => {
   assert.equal(isModeEligibleCard(cards[3], cards), false);
 });
 
-test("Mode 3 picture choices have three distinct locally bundled SVG images", () => {
+test("Mode 3 choices have three distinct curated public photo articles", () => {
   const { PictureCatalog, buildPictureQuiz } = pictureHarness();
   const cards = [
     { id: "apple", front: "苹果", meaning: "apple" },
@@ -226,7 +226,7 @@ test("Mode 3 picture choices have three distinct locally bundled SVG images", ()
   assert.equal(quiz.choices.filter(choice => choice.isCorrect).length, 1);
   assert.equal(new Set(quiz.choices.map(choice => choice.image)).size, 3);
   assert.ok(quiz.choices.every(choice =>
-    PictureCatalog.imageHref(choice.image).startsWith("pictures/pictures-")));
+    Boolean(PictureCatalog.articleFor(choice.image))));
   assert.equal(quiz.correctMeaning, "apple");
   assert.equal(quiz.choices.some(c => c.cardId === "apple-other"), false);
 });
@@ -235,7 +235,7 @@ test("Mode 3 pictures hide all choice meanings and example until answer", () => 
   const render = section("  function renderCard(", "  function rateCurrentCard(");
   const answer = section("  function handleQuizAnswer(", "  function presentNextCard(");
   assert.match(render, /buildPictureQuiz/);
-  assert.match(render, /document\.createElementNS\("http:\/\/www\.w3\.org\/2000\/svg", "svg"\)/);
+  assert.match(render, /document\.createElement\("img"\)/);
   assert.match(render, /btn\.setAttribute\("aria-label",/);
   assert.match(render, /exampleCard\.hidden = englishToChinese \|\| pictureMode/);
   assert.match(answer, /isPictureMode\(\) \? visibleCardMeaning/);
@@ -250,14 +250,79 @@ test("Mode 3 reveals the chosen meaning language, including after translation co
   assert.match(localized, /state\.quizAnswered/);
 });
 
-test("illustration sheets, attribution and cached offline assets are present", () => {
-  const sheetPaths = Array.from({length: 9}, (_, i) => "pictures/pictures-" + (i+1) + ".svg");
+
+test("public photo mode bundles no pictograms and shows source/license links after answers", () => {
   const cache = fs.readFileSync(path.join(root, "web/sw.js"), "utf8");
-  const license = fs.readFileSync(path.join(root, "web/pictures/LICENSE-LUCIDE.txt"), "utf8");
-  assert.match(license, /ISC License/);
-  assert.match(cache, /picture-catalog\.js/);
-  assert.ok(sheetPaths.every(name => {
-    const svg = fs.readFileSync(path.join(root, "web", name), "utf8");
-    return svg.includes("<symbol") && cache.includes("./" + name);
-  }));
+  const render = section("  function revealPhotoCredits(", "  function renderCard(");
+  const css = fs.readFileSync(path.join(root, "web/style.css"), "utf8");
+  assert.ok(cache.includes("picture-catalog.js"));
+  assert.ok(!cache.includes("pictures/pictures-"));
+  assert.match(html, /id="photoRetryBtn"/);
+  assert.match(html, /id="photoCredits"/);
+  assert.match(render, /loadPicturePhotos/);
+  assert.match(render, /sourceUrl/);
+  assert.match(render, /author & license/);
+  assert.match(css, /object-fit: cover/);
+  assert.ok(!css.includes(".choice-picture {"));
+});
+
+test("photo catalog fetches licensed Wikimedia thumbnails and checks image loading", async () => {
+  const calls = [];
+  const context = {
+    URLSearchParams, AbortController,
+    setTimeout, clearTimeout,
+    fetch: async url => {
+      calls.push(url);
+      return {
+        ok: true,
+        json: async () => ({
+          query: { pages: [{
+            title: "Apple",
+            pageimage: "Apple-001.jpg",
+            thumbnail: { source: "https://upload.wikimedia.org/wikipedia/commons/7/7e/Apple-001.jpg" }
+          }] }
+        })
+      };
+    },
+    Image: class {
+      set src(value) {
+        this.url = value;
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+  };
+  vm.runInNewContext(picturesCode + "\nglobalThis.api = PictureCatalog;", context);
+  const pic = await context.api.loadPhoto("apple");
+  const query = new URL(calls[0]);
+  assert.equal(query.hostname, "en.wikipedia.org");
+  assert.equal(query.searchParams.get("pilicense"), "free");
+  assert.equal(query.searchParams.get("titles"), "Apple");
+  assert.equal(query.searchParams.get("origin"), "*");
+  assert.equal(pic.src, "https://upload.wikimedia.org/wikipedia/commons/7/7e/Apple-001.jpg");
+  assert.ok(pic.sourceUrl.includes("/wiki/File:"));
+  await context.api.loadPhoto("apple");
+  assert.equal(calls.length, 1, "successful photos are cached in memory");
+});
+
+test("failed public photo requests reject cleanly and can be retried", async () => {
+  let calls = 0;
+  const context = {
+    URLSearchParams, AbortController, setTimeout, clearTimeout,
+    fetch: async () => {
+      calls += 1;
+      if (calls === 1) return { ok: false };
+      return { ok: true, json: async () => ({
+        query: { pages: [{
+          pageimage: "Apple-001.jpg",
+          thumbnail: { source: "https://upload.wikimedia.org/example.jpg" }
+        }] }
+      }) };
+    },
+    Image: class { set src(_) { queueMicrotask(() => this.onload?.()); } }
+  };
+  vm.runInNewContext(picturesCode + "\nglobalThis.api = PictureCatalog;", context);
+  await assert.rejects(() => context.api.loadPhoto("apple"));
+  const pic = await context.api.loadPhoto("apple");
+  assert.ok(pic.src.startsWith("https://upload.wikimedia.org/"));
+  assert.equal(calls, 2);
 });

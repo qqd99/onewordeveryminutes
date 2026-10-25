@@ -63,22 +63,25 @@ test("both published pages allow ten word repetitions", () => {
     const html = fs.readFileSync(path.join(root, directory, "index.html"), "utf8");
     const app = fs.readFileSync(path.join(root, directory, "app.js"), "utf8");
     assert.ok(html.includes('id="wordRepeatCount" class="input-number" min="1" max="10"'));
-    assert.ok(html.includes("app.js?v=28"));
+    assert.ok(html.includes("app.js?v=29"));
     assert.ok(app.includes("const count = Math.min(10, Math.max(1, Math.round(Number(repeat) || 2)));"));
     assert.ok(!app.includes("const count = Math.min(5, Math.max(1, Math.round(Number(repeat) || 2)));"));
   }
 });
 
-test("both published pages bundle offline picture mode and its image data", () => {
+test("both published pages use the curated public photo dataset", () => {
   for (const directory of ["web", "docs"]) {
     const html = fs.readFileSync(path.join(root, directory, "index.html"), "utf8");
     const app = fs.readFileSync(path.join(root, directory, "app.js"), "utf8");
     const catalog = fs.readFileSync(path.join(root, directory, "picture-catalog.js"), "utf8");
     const sw = fs.readFileSync(path.join(root, directory, "sw.js"), "utf8");
     assert.match(html, /value="chinese-to-picture"/);
-    assert.match(html, /picture-catalog\.js\?v=28/);
+    assert.match(html, /picture-catalog\.js\?v=29/);
     assert.match(app, /buildPictureQuiz/);
     assert.match(catalog, /PictureCatalog/);
-    assert.match(sw, /vocab-srs-cache-v28/);
+    assert.ok(catalog.includes("en.wikipedia.org"));
+    assert.doesNotMatch(catalog, /imageHref/);
+    assert.match(html, /photoRetryBtn/);
+    assert.match(sw, /vocab-srs-cache-v29/);
   }
 });
