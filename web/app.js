@@ -413,7 +413,7 @@
 
   function switchSaveSlot(nextId) {
     if (!saveSlots?.slots[nextId]) return false;
-    if (wordLoopState.active) stopWordLoop({ silent: true });
+    if (typeof wordLoopState !== "undefined" && wordLoopState.active) stopWordLoop({ silent: true });
     if (nextId === saveSlots.activeId) return true;
     if (!saveStoredState()) {
       showToast("Could not save current progress. Save switch cancelled.");
@@ -1425,7 +1425,7 @@
       return;
     }
 
-    if (wordLoopState.active) stopWordLoop({ silent: true });
+    if (typeof wordLoopState !== "undefined" && wordLoopState.active) stopWordLoop({ silent: true });
     stopAudio();
     wordLoopState.active = true;
     wordLoopState.token += 1;
@@ -1578,7 +1578,7 @@
 
   function pauseLearning() {
     if (state.learningStatus !== "active") return;
-    if (wordLoopState.active) stopWordLoop({ silent: true });
+    if (typeof wordLoopState !== "undefined" && wordLoopState.active) stopWordLoop({ silent: true });
     state.learningStatus = "paused";
     stopAudio();
     if (state.timerId) {
@@ -1927,7 +1927,7 @@
 
   function renderCard(card, { autoPlay = true } = {}) {
     if (state.learningStatus !== "active" || !card) return;
-    if (wordLoopState.active) stopWordLoop({ silent: true });
+    if (typeof wordLoopState !== "undefined" && wordLoopState.active) stopWordLoop({ silent: true });
     // Avoid double-cancelling speech right before a new reading starts.
     // playCardSequence() handles cancellation for spoken cards.
     const automaticReadingOff = state.store.settings.readWords === false &&
@@ -3367,7 +3367,7 @@
       els.packSelect.addEventListener("change", (e) => {
         const nextPack = data.packs.find(p => p.id === e.target.value);
         if (nextPack) {
-          if (wordLoopState.active) stopWordLoop({ silent: true });
+          if (typeof wordLoopState !== "undefined" && wordLoopState.active) stopWordLoop({ silent: true });
           state.activePack = nextPack;
           state.store.settings.activePackId = nextPack.id;
           state.currentCard = null;
