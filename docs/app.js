@@ -405,7 +405,7 @@
       updateDashboardCounts();
       renderDeckList();
     }
-    updateWordLoopPreview();
+    if (typeof updateWordLoopPreview === "function") updateWordLoopPreview();
     updateLearningSessionUi();
     scheduleNextReminder();
     renderSaveSlotControls();
@@ -1934,7 +1934,7 @@
       state.store.settings.readSentences === false;
     if (!autoPlay || automaticReadingOff) stopAudio();
     state.currentCard = card;
-    updateWordLoopPreview();
+    if (typeof updateWordLoopPreview === "function") updateWordLoopPreview();
     state.quizAnswered = false;
     state.selectedChoiceId = null;
     state.currentReviewBaseline = null;
@@ -2320,7 +2320,7 @@
     els.countDue.textContent = dueCount;
     els.countReviewed.textContent = reviewedCount;
     els.countNew.textContent = newCount;
-    updateWordLoopPreview();
+    if (typeof updateWordLoopPreview === "function") updateWordLoopPreview();
   }
 
   function renderDeckList() {
