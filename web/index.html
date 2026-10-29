@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=34" />
+  <link rel="stylesheet" href="style.css?v=35" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -86,6 +86,29 @@
         <button id="resumeLearningBtn" class="btn btn-primary session-main-btn" type="button" hidden>
           ▶ Resume learning
         </button>
+      </section>
+
+      <section class="word-loop-panel" id="wordLoopPanel" aria-labelledby="wordLoopTitle">
+        <div class="word-loop-heading">
+          <div>
+            <h2 id="wordLoopTitle">Word loop</h2>
+            <p>Listen to a fixed list of Chinese words. The list repeats until you stop it; this does not change review ratings.</p>
+          </div>
+          <div class="word-loop-controls">
+            <label class="word-loop-field">
+              <span>Words</span>
+              <input type="number" id="wordLoopCount" class="input-number" min="1" max="10000" step="1" value="10" />
+            </label>
+            <label class="word-loop-field">
+              <span>Repeats per word (<strong id="wordRepeatLabel">2</strong>×)</span>
+              <input type="number" id="wordRepeatCount" class="input-number" min="1" max="10" step="1" value="2" />
+            </label>
+            <button id="startWordLoopBtn" class="btn btn-primary" type="button">▶ Start loop</button>
+            <button id="stopWordLoopBtn" class="btn btn-secondary" type="button" hidden>■ Stop</button>
+          </div>
+        </div>
+        <p id="wordLoopStatus" class="word-loop-status" role="status">Choose how many words to hear, then start the loop.</p>
+        <ol id="wordLoopPreview" class="word-loop-preview" aria-label="Words in the loop"></ol>
       </section>
 
       <!-- Flashcard / Quiz Component -->
@@ -340,269 +363,178 @@
     <!-- SETTINGS TAB -->
     <section id="settingsView" class="tab-view">
       <div class="settings-panel">
+        <header class="settings-heading">
+          <h2>Settings</h2>
+          <p>Keep only the options you use. Changes save automatically; Save settings stores everything together.</p>
+        </header>
+        <div class="settings-savebar">
+          <button id="saveSettingsBtn" class="btn btn-primary" type="button">Save settings</button>
+          <span id="settingsSaveStatus" role="status">Ready</span>
+        </div>
+
         <div class="settings-group">
-          <h2 class="settings-group-title">Learning Mode</h2>
+          <h2 class="settings-group-title">Learning</h2>
           <div class="setting-row">
-            <div class="setting-info">
-              <label for="learningModeSelect">Quiz direction</label>
-              <p>Mode 1: Chinese → localized meaning. Mode 2: localized meaning → Chinese. Mode 3: Chinese → picture; the localized text meaning appears after answering. Mode 3 searches openly licensed photos on Wikimedia Commons for the current word and keeps two locally saved distractors. Internet access is needed for uncached words. Approve an appropriate image to reuse it later in this browser. Your selection is saved until changed.</p>
-            </div>
+            <div class="setting-info"><label for="learningModeSelect">Quiz direction</label><p>Mode 1: Chinese → localized meaning. Mode 2: localized meaning → Chinese. Mode 3: Chinese → picture. Mode 3 searches openly licensed photos on Wikimedia Commons for the current word and keeps two locally saved distractors. Internet access is needed for uncached words. Your selection is saved until changed.</p></div>
             <div class="setting-control">
               <select id="learningModeSelect" class="pack-select">
-                <option value="chinese-to-english">Mode 1 — Chinese → English (default)</option>
-                <option value="english-to-chinese">Mode 2 — Meaning → Chinese</option>
-                <option value="chinese-to-picture">Mode 3 — Chinese → Picture</option>
+                <option value="chinese-to-english">Mode 1: Chinese → meaning</option>
+                <option value="english-to-chinese">Mode 2: meaning → Chinese</option>
+                <option value="chinese-to-picture">Mode 3: Chinese → Picture</option>
               </select>
             </div>
           </div>
-        </div>
-
-        <div class="settings-group">
-          <h2 class="settings-group-title">Internet picture search (Mode 3)</h2>
           <div class="setting-row">
-            <div class="setting-info">
-              <p>Pictures for the current word are searched on Wikimedia Commons, without any API key or Gemini quota. Only the correct-word photo can be judged and approved; the other two are local distractors. After answering, choose Good to save the photo in this browser, or Bad to find another. Source and license links are provided with each photo.</p>
-              <p>Approved photos can be shared across devices only if a separate shared database endpoint is configured. Without one, approvals remain on the current device.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="settings-group">
-          <h2 class="settings-group-title">Meaning language</h2>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label for="meaningLanguageSelect">Translate the learning language directly into</label>
-              <p>With Chinese vocabulary, Chinese words and sentences are translated directly to Vietnamese or your selected language—not via English. Original English definitions stay available offline if translation fails.</p>
-            </div>
+            <div class="setting-info"><label for="meaningLanguageSelect">Meaning language</label></div>
             <div class="setting-control">
               <select id="meaningLanguageSelect" class="pack-select">
                 <option value="en">English</option>
-                  <option value="vi">Vietnamese (Tiếng Việt)</option>
-                  <option value="fr">French</option>
-                  <option value="es">Spanish</option>
-                  <option value="de">German</option>
-                  <option value="ja">Japanese</option>
-                  <option value="ko">Korean</option>
-                  <option value="zh-CN">Chinese (Simplified)</option>
-                  <option value="th">Thai</option>
-                  <option value="id">Indonesian</option>
+                <option value="vi">Vietnamese (Tiếng Việt)</option>
+                <option value="fr">French</option>
+                <option value="es">Spanish</option>
+                <option value="de">German</option>
+                <option value="ja">Japanese</option>
+                <option value="ko">Korean</option>
+                <option value="zh-CN">Chinese (Simplified)</option>
+                <option value="th">Thai</option>
+                <option value="id">Indonesian</option>
               </select>
-            </div>
-          </div>
-          <div class="setting-row" id="onDeviceTranslationRow" hidden>
-            <div class="setting-info">
-              <label>On-device translation (optional)</label>
-              <p>Chrome and supported desktop browsers can download a language pack once, then translate without relying on public translation services. No account needed.</p>
-              <p id="onDeviceTranslationStatus" role="status"></p>
-            </div>
-            <div class="setting-control">
-              <button id="enableOnDeviceTranslationBtn" class="btn btn-secondary" type="button">Enable on-device translation</button>
             </div>
           </div>
         </div>
 
         <div class="settings-group">
-          <h2 class="settings-group-title">Study Cadence & Reminders</h2>
+          <h2 class="settings-group-title">Audio</h2>
           <div class="setting-row">
-            <div class="setting-info">
-              <label for="reminderEnabled">Reminder Mode</label>
-              <p>Periodically prompt you with a new card while this tab is open</p>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="reminderEnabled" />
-              <span class="slider"></span>
-            </label>
-          </div>
-          <div class="setting-row time-setting-row">
-            <div class="setting-info">
-              <label>Reminder Interval</label>
-              <p>Frequency for automatic card reminders in Reminder Mode (Total: <strong id="intervalSummaryText">15m</strong>)</p>
-            </div>
-            <div class="time-picker-controls">
-              <div class="time-unit-box">
-                <input type="number" id="intervalHoursInput" class="input-time" min="0" max="72" value="0" placeholder="0" aria-label="Hours" />
-                <span class="time-unit-label">hours</span>
-              </div>
-              <span class="time-separator">:</span>
-              <div class="time-unit-box">
-                <input type="number" id="intervalMinutesInput" class="input-time" min="0" max="59" value="15" placeholder="15" aria-label="Minutes" />
-                <span class="time-unit-label">min</span>
-              </div>
-              <span class="time-separator">:</span>
-              <div class="time-unit-box">
-                <input type="number" id="intervalSecondsInput" class="input-time" min="0" max="59" value="0" placeholder="0" aria-label="Seconds" />
-                <span class="time-unit-label">sec</span>
-              </div>
-            </div>
-          </div>
-          <div class="interval-presets-row">
-            <span class="presets-label">Presets:</span>
-            <div class="presets-buttons">
-              <button type="button" class="preset-btn" data-hours="0" data-minutes="0" data-seconds="10">10s</button>
-              <button type="button" class="preset-btn" data-hours="0" data-minutes="0" data-seconds="30">30s</button>
-              <button type="button" class="preset-btn" data-hours="0" data-minutes="1" data-seconds="0">1m</button>
-              <button type="button" class="preset-btn" data-hours="0" data-minutes="5" data-seconds="0">5m</button>
-              <button type="button" class="preset-btn" data-hours="0" data-minutes="15" data-seconds="0">15m</button>
-              <button type="button" class="preset-btn" data-hours="0" data-minutes="30" data-seconds="0">30m</button>
-              <button type="button" class="preset-btn" data-hours="1" data-minutes="0" data-seconds="0">1h</button>
-            </div>
-          </div>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label for="enableBrowserNotifications">Desktop / Browser Notifications</label>
-              <p>Show system notifications when a new card is due while in the background</p>
-            </div>
-            <label class="toggle-switch">
-              <input type="checkbox" id="enableBrowserNotifications" />
-              <span class="slider"></span>
-            </label>
-          </div>
-        </div>
-
-        <div class="settings-group">
-          <h2 class="settings-group-title">Audio & Pronunciation</h2>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label for="audioEngineSelect">Audio Engine</label>
-              <p>Choose speech source (Online audio may be slower or unavailable; Auto is recommended)</p>
-            </div>
-            <div class="setting-control">
-              <select id="audioEngineSelect" class="pack-select">
-                <option value="auto">Auto (fast device voice + online fallback)</option>
-                <option value="online">Online Audio (HD Audio — Never Freezes)</option>
-                <option value="speechSynthesis">Device Speech Synthesis Only</option>
-              </select>
-            </div>
-          </div>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label for="voiceSelect">Chinese Speech Voice</label>
-              <p>Browser Web Speech voice for Mandarin Chinese</p>
-            </div>
-            <div class="setting-control">
-              <select id="voiceSelect" class="pack-select"></select>
-            </div>
-          </div>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label for="volumeRange">Speech Volume</label>
-              <p>Controls pronunciation volume (<span id="volumeLabel">100%</span>)</p>
-            </div>
-            <div class="setting-control">
-              <input type="range" id="volumeRange" class="input-range" min="0" max="100" step="5" value="100" />
-            </div>
-          </div>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label for="speedRange">Speech Rate</label>
-              <p>Controls speech speed (<span id="speedLabel">0.85x</span>)</p>
-            </div>
-            <div class="setting-control">
-              <input type="range" id="speedRange" class="input-range" min="0.5" max="1.5" step="0.05" value="0.85" />
-            </div>
-          </div>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label for="readWordToggle">Read word</label>
-              <p>Automatically pronounce the Chinese word when a card appears.</p>
-            </div>
+            <div class="setting-info"><label for="readWordToggle">Read word automatically</label></div>
             <label class="toggle-switch">
               <input type="checkbox" id="readWordToggle" checked />
               <span class="slider"></span>
             </label>
           </div>
           <div class="setting-row">
-            <div class="setting-info">
-              <label for="readSentenceToggle">Read sentence</label>
-              <p>Automatically pronounce the example sentence, even when Read word is off. Both switches work independently.</p>
-            </div>
+            <div class="setting-info"><label for="readSentenceToggle">Read example sentence automatically</label></div>
             <label class="toggle-switch">
               <input type="checkbox" id="readSentenceToggle" checked />
               <span class="slider"></span>
             </label>
           </div>
           <div class="setting-row">
-            <div class="setting-info">
-              <label for="wordRepeatCount">Word repeat count</label>
-              <p>How many times to read the word aloud per card (<span id="wordRepeatLabel">2</span>×)</p>
-            </div>
+            <div class="setting-info"><label for="volumeRange">Volume <span id="volumeLabel">100%</span></label></div>
             <div class="setting-control">
-              <input type="number" id="wordRepeatCount" class="input-number" min="1" max="10" step="1" value="2" />
+              <input type="range" id="volumeRange" class="input-range" min="0" max="100" step="5" value="100" />
             </div>
           </div>
           <div class="setting-row">
-            <div class="setting-info">
-              <label>Audio Diagnostics &amp; Recovery</label>
-              <p>Test audio playback or unfreeze speech synthesis if it becomes silent</p>
+            <div class="setting-info"><label for="speedRange">Speech speed <span id="speedLabel">0.85x</span></label></div>
+            <div class="setting-control">
+              <input type="range" id="speedRange" class="input-range" min="0.5" max="1.5" step="0.05" value="0.85" />
             </div>
-            <button id="testAudioBtn" class="btn btn-secondary" type="button">🔊 Test &amp; Fix Sound</button>
           </div>
+          <details class="settings-advanced">
+            <summary>More audio options</summary>
+            <div class="setting-row">
+              <div class="setting-info"><label for="audioEngineSelect">Audio engine</label></div>
+              <div class="setting-control">
+                <select id="audioEngineSelect" class="pack-select">
+                  <option value="auto">Auto</option>
+                  <option value="online">Online audio</option>
+                  <option value="speechSynthesis">Device voice only</option>
+                </select>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><label for="voiceSelect">Chinese voice</label></div>
+              <div class="setting-control"><select id="voiceSelect" class="pack-select"></select></div>
+            </div>
+          </details>
         </div>
 
-        <div class="settings-group">
-          <h2 class="settings-group-title">Save Files</h2>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label for="saveSlotSelect">Current save file</label>
-              <p>Keep separate learning progress in named saves. Switching stops the current session and returns to Start learning.</p>
+        <details class="settings-advanced">
+          <summary>Reminder options</summary>
+          <div class="settings-group">
+            <div class="setting-row">
+              <div class="setting-info"><label for="reminderEnabled">Automatic card reminders</label><p>Periodically show the next card while learning is active.</p></div>
+              <label class="toggle-switch"><input type="checkbox" id="reminderEnabled" /><span class="slider"></span></label>
             </div>
-            <div class="setting-control">
-              <select id="saveSlotSelect" class="pack-select" aria-label="Select a learning save"></select>
+            <div class="setting-row time-setting-row">
+              <div class="setting-info"><label>Reminder interval</label><p>Time between automatic cards (total: <strong id="intervalSummaryText">15m</strong>).</p></div>
+              <div class="time-picker-controls">
+                <div class="time-unit-box"><input type="number" id="intervalHoursInput" class="input-time" min="0" max="72" value="0" aria-label="Hours" /><span class="time-unit-label">hours</span></div>
+                <span class="time-separator">:</span>
+                <div class="time-unit-box"><input type="number" id="intervalMinutesInput" class="input-time" min="0" max="59" value="15" aria-label="Minutes" /><span class="time-unit-label">min</span></div>
+                <span class="time-separator">:</span>
+                <div class="time-unit-box"><input type="number" id="intervalSecondsInput" class="input-time" min="0" max="59" value="0" aria-label="Seconds" /><span class="time-unit-label">sec</span></div>
+              </div>
+            </div>
+            <div class="interval-presets-row">
+              <span class="presets-label">Presets:</span>
+              <div class="presets-buttons">
+                <button type="button" class="preset-btn" data-hours="0" data-minutes="0" data-seconds="10">10s</button>
+                <button type="button" class="preset-btn" data-hours="0" data-minutes="0" data-seconds="30">30s</button>
+                <button type="button" class="preset-btn" data-hours="0" data-minutes="1" data-seconds="0">1m</button>
+                <button type="button" class="preset-btn" data-hours="0" data-minutes="5" data-seconds="0">5m</button>
+                <button type="button" class="preset-btn" data-hours="0" data-minutes="15" data-seconds="0">15m</button>
+                <button type="button" class="preset-btn" data-hours="0" data-minutes="30" data-seconds="0">30m</button>
+                <button type="button" class="preset-btn" data-hours="1" data-minutes="0" data-seconds="0">1h</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><label for="enableBrowserNotifications">Browser notifications</label><p>Notify you when a card is due in the background.</p></div>
+              <label class="toggle-switch"><input type="checkbox" id="enableBrowserNotifications" /><span class="slider"></span></label>
             </div>
           </div>
-          <div class="save-slots-actions">
-            <button id="newSaveBtn" class="btn btn-secondary" type="button">＋ New save</button>
-            <button id="duplicateSaveBtn" class="btn btn-secondary" type="button">⧉ Duplicate</button>
-            <button id="renameSaveBtn" class="btn btn-secondary" type="button">✏️ Rename</button>
-            <button id="deleteSaveBtn" class="btn btn-danger" type="button">🗑 Delete</button>
-          </div>
-          <p id="activeSaveInfo" class="save-slot-info" role="status">Main Save is selected.</p>
-          <p class="save-slot-tip">Saves stay in this browser, not on GitHub. Export JSON to download the current save, or import a JSON backup as a separate save below.</p>
-        </div>
+        </details>
 
-        <div class="settings-group">
-          <h2 class="settings-group-title">Vocabulary Sources</h2>
-          <p class="save-slot-tip">The 10,000-word catalog includes 9,000 frequency-ranked entries and example sentences adapted from Zhongdex by SayMei and CC-CEDICT, licensed under CC BY-SA 4.0.
-          <a href="VOCABULARY_SOURCES.md" target="_blank" rel="noopener noreferrer">View sources, attribution and license</a>.</p>
-        </div>
-
-        <div class="settings-group">
-          <h2 class="settings-group-title">Data Backup & Compatibility</h2>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label>Export current save</label>
-              <p>Download the selected save as a portable JSON file (progress and learning settings)</p>
+        <details class="settings-advanced settings-data-advanced">
+          <summary>Save files and backups</summary>
+          <div class="settings-group">
+            <h2 class="settings-group-title">Save file</h2>
+            <div class="setting-row">
+              <div class="setting-info"><label for="saveSlotSelect">Current save</label></div>
+              <div class="setting-control">
+                <select id="saveSlotSelect" class="pack-select" aria-label="Select a learning save"></select>
+              </div>
             </div>
-            <button id="exportDataBtn" class="btn btn-secondary" type="button">⬇️ Export JSON</button>
+            <div class="save-slots-actions">
+              <button id="newSaveBtn" class="btn btn-secondary" type="button">＋ New</button>
+              <button id="duplicateSaveBtn" class="btn btn-secondary" type="button">⧉ Duplicate</button>
+              <button id="renameSaveBtn" class="btn btn-secondary" type="button">Rename</button>
+              <button id="deleteSaveBtn" class="btn btn-danger" type="button">Delete</button>
+            </div>
+            <p id="activeSaveInfo" class="save-slot-info" role="status">Main Save is selected.</p>
+            <p class="save-slot-tip">Saves stay in this browser. Export a backup before clearing browser data.</p>
           </div>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label>Import progress into current save</label>
-              <p>Merge a JSON backup into the selected save. Other named saves are unaffected.</p>
+          <div class="settings-group">
+            <h2 class="settings-group-title">Backups</h2>
+            <div class="setting-row">
+              <div class="setting-info"><label>Export current save</label></div>
+              <button id="exportDataBtn" class="btn btn-secondary" type="button">Export JSON</button>
             </div>
-            <div class="setting-control">
-              <input type="file" id="importFileInput" accept=".json" style="display: none;" />
-              <button id="importDataBtn" class="btn btn-secondary" type="button">⬆️ Import JSON</button>
+            <div class="setting-row">
+              <div class="setting-info"><label>Import progress</label></div>
+              <div class="setting-control">
+                <input type="file" id="importFileInput" accept=".json" style="display:none;" />
+                <button id="importDataBtn" class="btn btn-secondary" type="button">Import progress</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><label>Import as a new save</label></div>
+              <div class="setting-control">
+                <input type="file" id="importSaveFile" accept=".json,application/json" hidden />
+                <button id="importSaveBtn" class="btn btn-secondary" type="button">Import save</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><label>Reset progress</label></div>
+              <button id="resetDataBtn" class="btn btn-danger" type="button">Reset all</button>
             </div>
           </div>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label>Import as a new save</label>
-              <p>Open a downloaded JSON backup in a separate named save without overwriting your current progress.</p>
-            </div>
-            <div class="setting-control">
-              <input type="file" id="importSaveFile" accept=".json,application/json" hidden />
-              <button id="importSaveBtn" class="btn btn-secondary" type="button">📂 Import as new save</button>
-            </div>
+          <div class="settings-group">
+            <h2 class="settings-group-title">Vocabulary sources</h2>
+            <p class="save-slot-tip">The 10,000-word catalog includes 9,000 frequency-ranked entries and example sentences adapted from Zhongdex by SayMei and CC-CEDICT, licensed under CC BY-SA 4.0. <a href="VOCABULARY_SOURCES.md" target="_blank" rel="noopener noreferrer">View sources, attribution and license</a>.</p>
           </div>
-          <div class="setting-row">
-            <div class="setting-info">
-              <label style="color: var(--danger-text);">Reset Progress</label>
-              <p>Clear all learning history and start fresh with 0 reviewed cards</p>
-            </div>
-            <button id="resetDataBtn" class="btn btn-danger" type="button">⚠️ Reset All</button>
-          </div>
-        </div>
+        </details>
       </div>
     </section>
   </main>
@@ -628,6 +560,6 @@
   <script src="ai-image-config.js?v=34"></script>
   <script src="picture-catalog.js?v=30"></script>
   <script src="internet-picture.js?v=34"></script>
-  <script src="app.js?v=34"></script>
+  <script src="app.js?v=35"></script>
 </body>
 </html>
