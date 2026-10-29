@@ -81,19 +81,21 @@ test("Save settings persists all essential and advanced preferences", () => {
   assert.match(html, /id="settingsSaveStatus"/);
 });
 
-test("settings are simplified and old reminder/diagnostic controls are absent", () => {
+test("settings are simplified while advanced reminders and attribution remain available", () => {
   for (const id of [
     "wordLoopPanel", "learningModeSelect", "meaningLanguageSelect",
     "readWordToggle", "readSentenceToggle", "volumeRange", "speedRange",
-    "audioEngineSelect", "voiceSelect", "saveSlotSelect", "exportDataBtn"
+    "audioEngineSelect", "voiceSelect", "saveSlotSelect", "exportDataBtn",
+    "reminderEnabled", "intervalHoursInput", "enableBrowserNotifications"
   ]) assert.ok(html.includes('id="' + id + '"'), "Missing control: " + id);
   for (const id of [
-    "reminderEnabled", "enableBrowserNotifications", "intervalHoursInput",
     "testAudioBtn", "onDeviceTranslationRow"
   ]) assert.ok(!html.includes('id="' + id + '"'), "Unnecessary setting remains: " + id);
   assert.match(css, /\.word-loop-panel/);
   assert.match(css, /\.settings-savebar/);
   assert.match(html, /Save files and backups/);
+  assert.match(html, /Reminder options/);
+  assert.match(html, /CC-CEDICT/);
 });
 
 test("word-loop and settings markup is mirrored by the app script and cache version", () => {

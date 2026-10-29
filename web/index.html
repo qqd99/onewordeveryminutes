@@ -450,6 +450,42 @@
           </details>
         </div>
 
+        <details class="settings-advanced">
+          <summary>Reminder options</summary>
+          <div class="settings-group">
+            <div class="setting-row">
+              <div class="setting-info"><label for="reminderEnabled">Automatic card reminders</label><p>Periodically show the next card while learning is active.</p></div>
+              <label class="toggle-switch"><input type="checkbox" id="reminderEnabled" /><span class="slider"></span></label>
+            </div>
+            <div class="setting-row time-setting-row">
+              <div class="setting-info"><label>Reminder interval</label><p>Time between automatic cards (total: <strong id="intervalSummaryText">15m</strong>).</p></div>
+              <div class="time-picker-controls">
+                <div class="time-unit-box"><input type="number" id="intervalHoursInput" class="input-time" min="0" max="72" value="0" aria-label="Hours" /><span class="time-unit-label">hours</span></div>
+                <span class="time-separator">:</span>
+                <div class="time-unit-box"><input type="number" id="intervalMinutesInput" class="input-time" min="0" max="59" value="15" aria-label="Minutes" /><span class="time-unit-label">min</span></div>
+                <span class="time-separator">:</span>
+                <div class="time-unit-box"><input type="number" id="intervalSecondsInput" class="input-time" min="0" max="59" value="0" aria-label="Seconds" /><span class="time-unit-label">sec</span></div>
+              </div>
+            </div>
+            <div class="interval-presets-row">
+              <span class="presets-label">Presets:</span>
+              <div class="presets-buttons">
+                <button type="button" class="preset-btn" data-hours="0" data-minutes="0" data-seconds="10">10s</button>
+                <button type="button" class="preset-btn" data-hours="0" data-minutes="0" data-seconds="30">30s</button>
+                <button type="button" class="preset-btn" data-hours="0" data-minutes="1" data-seconds="0">1m</button>
+                <button type="button" class="preset-btn" data-hours="0" data-minutes="5" data-seconds="0">5m</button>
+                <button type="button" class="preset-btn" data-hours="0" data-minutes="15" data-seconds="0">15m</button>
+                <button type="button" class="preset-btn" data-hours="0" data-minutes="30" data-seconds="0">30m</button>
+                <button type="button" class="preset-btn" data-hours="1" data-minutes="0" data-seconds="0">1h</button>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><label for="enableBrowserNotifications">Browser notifications</label><p>Notify you when a card is due in the background.</p></div>
+              <label class="toggle-switch"><input type="checkbox" id="enableBrowserNotifications" /><span class="slider"></span></label>
+            </div>
+          </div>
+        </details>
+
         <details class="settings-advanced settings-data-advanced">
           <summary>Save files and backups</summary>
           <div class="settings-group">
@@ -493,6 +529,10 @@
               <div class="setting-info"><label>Reset progress</label></div>
               <button id="resetDataBtn" class="btn btn-danger" type="button">Reset all</button>
             </div>
+          </div>
+          <div class="settings-group">
+            <h2 class="settings-group-title">Vocabulary sources</h2>
+            <p class="save-slot-tip">The 10,000-word catalog includes 9,000 frequency-ranked entries and example sentences adapted from Zhongdex by SayMei and CC-CEDICT, licensed under CC BY-SA 4.0. <a href="VOCABULARY_SOURCES.md" target="_blank" rel="noopener noreferrer">View sources, attribution and license</a>.</p>
           </div>
         </details>
       </div>

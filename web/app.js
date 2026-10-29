@@ -229,10 +229,8 @@
     const savedLoopCount = Number(normalized.settings.wordLoopCount);
     normalized.settings.wordLoopCount = Number.isFinite(savedLoopCount) && savedLoopCount >= 1
       ? Math.min(10000, Math.round(savedLoopCount)) : 10;
-    // Reminder controls were removed from the minimal interface. Preserve the
-    // saved SRS progress, but do not restart hidden reminder notifications.
-    normalized.settings.reminderEnabled = false;
-    normalized.settings.notificationsEnabled = false;
+    // Reminder preferences remain part of each save and are exposed in the
+    // collapsed advanced settings, preserving existing spaced-repetition behavior.
     if (!["chinese-to-english", "english-to-chinese", "chinese-to-picture"].includes(normalized.settings.learningMode)) {
       normalized.settings.learningMode = "chinese-to-english";
     }
@@ -2898,8 +2896,11 @@
         settings.readSentences = Boolean(els.readSentenceToggle?.checked);
         settings.wordRepeat = Math.max(1, Math.min(10, Math.round(Number(els.wordRepeatCount?.value) || 1)));
         settings.wordLoopCount = Math.max(1, Math.min(10000, Math.round(Number(els.wordLoopCount?.value) || 10)));
-        settings.reminderEnabled = false;
-        settings.notificationsEnabled = false;
+        settings.reminderEnabled = Boolean(els.reminderEnabled?.checked ?? settings.reminderEnabled);
+        settings.intervalHours = Math.max(0, Math.min(72, Math.round(Number(els.intervalHoursInput?.value ?? settings.intervalHours) || 0)));
+        settings.intervalMinutes = Math.max(0, Math.min(59, Math.round(Number(els.intervalMinutesInput?.value ?? settings.intervalMinutes) || 0)));
+        settings.intervalSeconds = Math.max(0, Math.min(59, Math.round(Number(els.intervalSecondsInput?.value ?? settings.intervalSeconds) || 0)));
+        settings.notificationsEnabled = Boolean(els.enableBrowserNotifications?.checked ?? settings.notificationsEnabled);
         syncMeaningLanguageControls();
         if (saveStoredState()) {
           if (els.settingsSaveStatus) els.settingsSaveStatus.textContent = "Saved to this browser";
@@ -2976,9 +2977,78 @@
       });
     }
 
-    // Reminder and notification controls were removed from the minimal UI.
-    state.store.settings.reminderEnabled = false;
-    state.store.settings.notificationsEnabled = false;
+    // Reminder mode and interval are available under collapsed advanced settings.
+    if (els.reminderEnabled) {
+      els.reminderEnabled.checked = Boolean(state.store.settings.reminderEnabled);
+      els.reminderEnabled.addEventListener("change", event => {
+        state.store.settings.reminderEnabled = event.target.checked;
+        saveStoredState();
+        scheduleNextReminder();
+      });
+    }
+
+    function updateIntervalSummary() {
+      if (els.intervalSummaryText) {
+        els.intervalSummaryText.textContent = formatTimeInterval(getTotalIntervalSeconds());
+      }
+    }
+
+    const intervalFields = [
+      [els.intervalHoursInput, "intervalHours", 0, 72],
+      [els.intervalMinutesInput, "intervalMinutes", 15, 59],
+      [els.intervalSecondsInput, "intervalSeconds", 0, 59]
+    ];
+    for (const [control, key, fallback, max] of intervalFields) {
+      if (!control) continue;
+      control.value = state.store.settings[key] ?? fallback;
+      control.addEventListener("input", event => {
+        state.store.settings[key] = Math.max(0, Math.min(max, parseInt(event.target.value, 10) || 0));
+        updateIntervalSummary();
+        saveStoredState();
+        if (state.store.settings.reminderEnabled) scheduleNextReminder();
+      });
+    }
+    updateIntervalSummary();
+
+    document.querySelectorAll(".preset-btn").forEach(button => {
+      button.addEventListener("click", () => {
+        state.store.settings.intervalHours = parseInt(button.dataset.hours, 10) || 0;
+        state.store.settings.intervalMinutes = parseInt(button.dataset.minutes, 10) || 0;
+        state.store.settings.intervalSeconds = parseInt(button.dataset.seconds, 10) || 0;
+        if (els.intervalHoursInput) els.intervalHoursInput.value = state.store.settings.intervalHours;
+        if (els.intervalMinutesInput) els.intervalMinutesInput.value = state.store.settings.intervalMinutes;
+        if (els.intervalSecondsInput) els.intervalSecondsInput.value = state.store.settings.intervalSeconds;
+        updateIntervalSummary();
+        saveStoredState();
+        if (state.store.settings.reminderEnabled) scheduleNextReminder();
+        showToast("Interval set to " + formatTimeInterval(getTotalIntervalSeconds()));
+      });
+    });
+
+    if (els.enableBrowserNotifications) {
+      els.enableBrowserNotifications.checked = Boolean(state.store.settings.notificationsEnabled);
+      els.enableBrowserNotifications.addEventListener("change", async event => {
+        if (event.target.checked) {
+          if ("Notification" in window) {
+            const permission = await Notification.requestPermission();
+            if (permission === "granted") {
+              state.store.settings.notificationsEnabled = true;
+              showToast("Notifications enabled!");
+            } else {
+              state.store.settings.notificationsEnabled = false;
+              event.target.checked = false;
+              showToast("Notification permission was denied.");
+            }
+          } else {
+            showToast("Browser does not support notifications.");
+            event.target.checked = false;
+          }
+        } else {
+          state.store.settings.notificationsEnabled = false;
+        }
+        saveStoredState();
+      });
+    }
 
     // Audio volume & speed
     els.volumeRange.value = state.store.settings.volume ?? 100;
