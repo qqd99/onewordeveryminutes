@@ -1365,6 +1365,7 @@
     wordLoopState.queue = [];
     wordLoopState.index = 0;
     if (wasActive) stopAudio();
+    if (wasActive && state.learningStatus === "active") scheduleNextReminder();
     updateWordLoopPreview();
     if (wasActive && !silent && els.wordLoopStatus) {
       els.wordLoopStatus.textContent = "Loop stopped.";
@@ -1395,6 +1396,7 @@
         if (els.wordLoopStatus) {
           els.wordLoopStatus.textContent = "Audio stopped or unavailable. Check volume or audio settings, then try again.";
         }
+        if (state.learningStatus === "active") scheduleNextReminder();
         return;
       }
       await new Promise(resolve => setTimeout(resolve, 450));
@@ -1424,6 +1426,11 @@
     }
 
     if (typeof wordLoopState !== "undefined" && wordLoopState.active) stopWordLoop({ silent: true });
+    if (state.timerId) {
+      clearInterval(state.timerId);
+      state.timerId = null;
+    }
+    state.nextReminderTime = null;
     stopAudio();
     wordLoopState.active = true;
     wordLoopState.token += 1;

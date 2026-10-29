@@ -57,6 +57,8 @@ test("word loop runs indefinitely, wraps to its first word, and can be stopped",
   assert.match(app, /els\.stopWordLoopBtn\?\.addEventListener\("click", \(\) => stopWordLoop\(\)\)/);
   assert.match(app, /repeat: wordLoopState\.repeats/);
   assert.match(app, /speechText \|\| card\.front/);
+  assert.match(app, /if \(wasActive && state\.learningStatus === "active"\) scheduleNextReminder\(\)/);
+  assert.match(app, /state\.nextReminderTime = null;\s*stopAudio\(\);\s*wordLoopState\.active = true/);
 });
 
 test("loop settings persist the word count and repetition count", () => {
