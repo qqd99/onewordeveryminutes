@@ -65,6 +65,7 @@ test("loop settings persist the word count and repetition count", () => {
   assert.match(app, /settings\.wordRepeat = Math\.max\(1, Math\.min\(10/);
   assert.match(app, /saveStoredState\(\);\s*updateWordLoopPreview\(\);/);
   assert.match(html, /id="wordLoopCount"/);
+  assert.match(html, /id="wordRepeatLabel"/);
   assert.match(html, /id="wordRepeatCount" class="input-number" min="1" max="10"/);
 });
 

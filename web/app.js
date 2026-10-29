@@ -2889,7 +2889,7 @@
         settings.translationLanguage = TranslationSupport.normalizeLanguage(els.meaningLanguageSelect?.value || settings.translationLanguage);
         settings.audioEngine = ["auto", "online", "speechSynthesis"].includes(els.audioEngineSelect?.value)
           ? els.audioEngineSelect.value : "auto";
-        settings.selectedVoice = els.voiceSelect?.value || "";
+        settings.selectedVoice = els.voiceSelect?.value || settings.selectedVoice || "";
         settings.volume = Math.max(0, Math.min(100, Number(els.volumeRange?.value ?? settings.volume) || 0));
         settings.speed = Math.max(0.5, Math.min(1.5, Number(els.speedRange?.value ?? settings.speed) || 0.85));
         settings.readWords = Boolean(els.readWordToggle?.checked);
