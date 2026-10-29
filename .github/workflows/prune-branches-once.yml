@@ -1,0 +1,31 @@
+name: Prune obsolete branches (one-time)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/prune-branches-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    if: github.repository == 'qqd99/onewordeveryminutes' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove every branch except main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GH_REPO/branches?per_page=100" --jq '.[].name' | while IFS= read -r branch; do
+            if [[ "$branch" == "main" ]]; then
+              echo "Keeping main"
+              continue
+            fi
+            echo "Deleting $branch"
+            gh api --method DELETE "repos/$GH_REPO/git/refs/heads/$branch"
+          done
