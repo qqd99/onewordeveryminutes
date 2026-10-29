@@ -921,7 +921,9 @@
   }
 
   async function speak(text, { lang = "zh-CN", repeat = 2 } = {}) {
-    if (wordLoopState.active) stopWordLoop({ silent: true });
+    // Keep standalone audio callers and unit-test harnesses compatible when
+    // the study page's word-loop module has not been initialized.
+    if (typeof wordLoopState !== "undefined" && wordLoopState.active) stopWordLoop({ silent: true });
     const generation = stopAudio();
     const succeeded = await speakSegment(text, { lang, repeat, generation });
     if (!succeeded && isCurrentAudio(generation) && (state.store.settings.volume ?? 100) > 0) {
