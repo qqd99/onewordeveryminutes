@@ -35,6 +35,7 @@
         readWords: true,
         readSentences: true,
         wordRepeat: 2,
+        wordLoopCount: 10,
         audioEngine: "auto",
         selectedVoice: "",
         notificationsEnabled: false
@@ -51,6 +52,7 @@
   };
 
   const defaultStore = JSON.parse(JSON.stringify(state.store));
+  const wordLoopState = { active: false, token: 0, queue: [], index: 0, repeats: 2 };
   let saveSlots = null;
 
   // DOM Elements cache
@@ -145,6 +147,14 @@
     sampleChips: $(".sample-chip"),
 
     // Settings View
+    saveSettingsBtn: $("#saveSettingsBtn"),
+    settingsSaveStatus: $("#settingsSaveStatus"),
+    wordLoopPanel: $("#wordLoopPanel"),
+    wordLoopCount: $("#wordLoopCount"),
+    wordLoopStatus: $("#wordLoopStatus"),
+    wordLoopPreview: $("#wordLoopPreview"),
+    startWordLoopBtn: $("#startWordLoopBtn"),
+    stopWordLoopBtn: $("#stopWordLoopBtn"),
     reminderEnabled: $("#reminderEnabled"),
     learningModeSelect: $("#learningModeSelect"),
     meaningLanguageSelect: $("#meaningLanguageSelect"),
@@ -216,6 +226,13 @@
     const savedRepeats = Number(normalized.settings.wordRepeat);
     normalized.settings.wordRepeat = Number.isFinite(savedRepeats) && savedRepeats >= 1
       ? Math.min(10, Math.round(savedRepeats)) : 2;
+    const savedLoopCount = Number(normalized.settings.wordLoopCount);
+    normalized.settings.wordLoopCount = Number.isFinite(savedLoopCount) && savedLoopCount >= 1
+      ? Math.min(10000, Math.round(savedLoopCount)) : 10;
+    // Reminder controls were removed from the minimal interface. Preserve the
+    // saved SRS progress, but do not restart hidden reminder notifications.
+    normalized.settings.reminderEnabled = false;
+    normalized.settings.notificationsEnabled = false;
     if (!["chinese-to-english", "english-to-chinese", "chinese-to-picture"].includes(normalized.settings.learningMode)) {
       normalized.settings.learningMode = "chinese-to-english";
     }
@@ -377,6 +394,7 @@
     if (els.readSentenceToggle) els.readSentenceToggle.checked = settings.readSentences !== false;
     if (els.wordRepeatCount) els.wordRepeatCount.value = settings.wordRepeat || 2;
     if (els.wordRepeatLabel) els.wordRepeatLabel.textContent = settings.wordRepeat || 2;
+    if (els.wordLoopCount) els.wordLoopCount.value = settings.wordLoopCount || 10;
     loadVoices();
 
     if (state.catalog?.packs?.length) {
@@ -387,6 +405,7 @@
       updateDashboardCounts();
       renderDeckList();
     }
+    updateWordLoopPreview();
     updateLearningSessionUi();
     scheduleNextReminder();
     renderSaveSlotControls();
@@ -394,6 +413,7 @@
 
   function switchSaveSlot(nextId) {
     if (!saveSlots?.slots[nextId]) return false;
+    if (wordLoopState.active) stopWordLoop({ silent: true });
     if (nextId === saveSlots.activeId) return true;
     if (!saveStoredState()) {
       showToast("Could not save current progress. Save switch cancelled.");
@@ -901,6 +921,7 @@
   }
 
   async function speak(text, { lang = "zh-CN", repeat = 2 } = {}) {
+    if (wordLoopState.active) stopWordLoop({ silent: true });
     const generation = stopAudio();
     const succeeded = await speakSegment(text, { lang, repeat, generation });
     if (!succeeded && isCurrentAudio(generation) && (state.store.settings.volume ?? 100) > 0) {
@@ -1204,6 +1225,248 @@
     return getModeEligibleVocabulary(vocabulary).some(item => item.id === targetId);
   }
 
+  function buildWordLoopQueue(limit, eligible = getModeEligibleVocabulary(state.activePack?.cards || [])) {
+    if (!eligible.length) return [];
+    const now = Date.now();
+    const current = state.currentCard
+      ? eligible.find(card => card.id === state.currentCard.id) || null : null;
+    const dueReviewed = [];
+    const unseen = [];
+    const deferredNew = [];
+    const futureReviewed = [];
+
+    for (const card of eligible) {
+      if (card.id === current?.id) continue;
+      const progress = state.store.progress[card.id];
+      if (!wasEverShown(progress)) {
+        unseen.push(card);
+      } else if (!wasEverReviewed(progress)) {
+        deferredNew.push(card);
+      } else {
+        const normalized = normalizeProgress(progress);
+        if ((normalized.dueAt || 0) <= now) dueReviewed.push(card);
+        else futureReviewed.push(card);
+      }
+    }
+
+    dueReviewed.sort((a, b) =>
+      (normalizeProgress(state.store.progress[a.id]).dueAt || 0) -
+      (normalizeProgress(state.store.progress[b.id]).dueAt || 0));
+    deferredNew.sort((a, b) =>
+      (normalizeProgress(state.store.progress[a.id]).lastShownAt || 0) -
+      (normalizeProgress(state.store.progress[b.id]).lastShownAt || 0));
+    futureReviewed.sort((a, b) =>
+      (normalizeProgress(state.store.progress[a.id]).dueAt || 0) -
+      (normalizeProgress(state.store.progress[b.id]).dueAt || 0));
+
+    const ordered = [current, ...dueReviewed, ...unseen, ...deferredNew, ...futureReviewed]
+      .filter(Boolean);
+    const seen = new Set();
+    const unique = ordered.filter(card => {
+      if (seen.has(card.id)) return false;
+      seen.add(card.id);
+      return true;
+    });
+    const count = Math.max(1, Math.min(unique.length, Math.round(Number(limit) || 1)));
+    return unique.slice(0, count);
+  }
+
+  function updateWordLoopPreview() {
+    if (!els.wordLoopPreview || !els.wordLoopStatus) return;
+    if (!state.activePack) {
+      els.wordLoopStatus.textContent = "Loading vocabulary…";
+      if (els.startWordLoopBtn) els.startWordLoopBtn.disabled = true;
+      return;
+    }
+
+    const eligible = getModeEligibleVocabulary(state.activePack.cards || []);
+    const requested = Math.max(1, Math.min(10000,
+      Math.round(Number(els.wordLoopCount?.value || state.store.settings.wordLoopCount) || 10)));
+    const count = Math.min(requested, eligible.length);
+    if (!wordLoopState.active && els.wordLoopCount) {
+      els.wordLoopCount.max = String(Math.max(1, eligible.length));
+      if (eligible.length && Number(els.wordLoopCount.value) > eligible.length) {
+        els.wordLoopCount.value = String(eligible.length);
+      }
+    }
+    const queue = wordLoopState.active
+      ? wordLoopState.queue
+      : buildWordLoopQueue(count || 1, eligible);
+    const repeats = wordLoopState.active
+      ? wordLoopState.repeats
+      : Math.max(1, Math.min(10, Math.round(Number(els.wordRepeatCount?.value || state.store.settings.wordRepeat) || 2)));
+
+    if (wordLoopState.active) {
+      const card = queue[wordLoopState.index];
+      els.wordLoopStatus.textContent = card
+        ? "Playing " + (wordLoopState.index + 1) + " of " + queue.length + ": " + card.front + " · " + repeats + "×"
+        : "Word loop stopped.";
+    } else if (!eligible.length) {
+      els.wordLoopStatus.textContent = "No words are available in this quiz mode.";
+    } else {
+      els.wordLoopStatus.textContent =
+        queue.length + " words ready · " + repeats + "× each. Audio only; SRS ratings are unchanged.";
+    }
+
+    if (els.startWordLoopBtn) els.startWordLoopBtn.hidden = wordLoopState.active;
+    if (els.stopWordLoopBtn) els.stopWordLoopBtn.hidden = !wordLoopState.active;
+    if (els.startWordLoopBtn) els.startWordLoopBtn.disabled = !eligible.length || wordLoopState.active;
+    if (els.stopWordLoopBtn) els.stopWordLoopBtn.disabled = !wordLoopState.active;
+    if (els.wordLoopCount) els.wordLoopCount.disabled = wordLoopState.active;
+    if (els.wordRepeatCount) els.wordRepeatCount.disabled = wordLoopState.active;
+
+    els.wordLoopPreview.replaceChildren();
+    if (!queue.length) {
+      const empty = document.createElement("li");
+      empty.textContent = "No words available";
+      empty.className = "word-loop-more";
+      els.wordLoopPreview.appendChild(empty);
+      return;
+    }
+
+    const maxVisible = 12;
+    let start = 0;
+    if (wordLoopState.active && wordLoopState.index >= maxVisible) {
+      start = Math.min(wordLoopState.index - Math.floor(maxVisible / 2),
+        Math.max(0, queue.length - maxVisible));
+    }
+    const visible = queue.slice(start, start + maxVisible);
+    visible.forEach((card, offset) => {
+      const index = start + offset;
+      const item = document.createElement("li");
+      if (wordLoopState.active && index === wordLoopState.index) {
+        item.classList.add("is-current");
+        item.setAttribute("aria-current", "true");
+      }
+      const hanzi = document.createElement("span");
+      hanzi.className = "word-loop-hanzi";
+      hanzi.textContent = card.front || "";
+      item.appendChild(hanzi);
+      if (card.reading) {
+        const reading = document.createElement("span");
+        reading.className = "word-loop-reading";
+        reading.textContent = card.reading;
+        item.appendChild(reading);
+      }
+      els.wordLoopPreview.appendChild(item);
+    });
+    if (queue.length > visible.length) {
+      const more = document.createElement("li");
+      more.className = "word-loop-more";
+      more.textContent = (queue.length - visible.length) + " more";
+      els.wordLoopPreview.appendChild(more);
+    }
+  }
+
+  function stopWordLoop({ silent = false } = {}) {
+    const wasActive = wordLoopState.active;
+    wordLoopState.active = false;
+    wordLoopState.token += 1;
+    wordLoopState.queue = [];
+    wordLoopState.index = 0;
+    if (wasActive) stopAudio();
+    updateWordLoopPreview();
+    if (wasActive && !silent && els.wordLoopStatus) {
+      els.wordLoopStatus.textContent = "Loop stopped.";
+    }
+  }
+
+  async function runWordLoop(token) {
+    while (wordLoopState.active && token === wordLoopState.token) {
+      const card = wordLoopState.queue[wordLoopState.index];
+      if (!card) {
+        stopWordLoop({ silent: true });
+        return;
+      }
+      updateWordLoopPreview();
+      const generation = stopAudio();
+      const success = await speakSegment(card.speechText || card.front, {
+        lang: card.speechLang || "zh-CN",
+        repeat: wordLoopState.repeats,
+        generation
+      });
+      if (!wordLoopState.active || token !== wordLoopState.token) return;
+      if (!success || !isCurrentAudio(generation)) {
+        wordLoopState.active = false;
+        wordLoopState.token += 1;
+        wordLoopState.queue = [];
+        wordLoopState.index = 0;
+        updateWordLoopPreview();
+        if (els.wordLoopStatus) {
+          els.wordLoopStatus.textContent = "Audio stopped or unavailable. Check volume or audio settings, then try again.";
+        }
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 450));
+      if (!wordLoopState.active || token !== wordLoopState.token) return;
+      wordLoopState.index = (wordLoopState.index + 1) % wordLoopState.queue.length;
+    }
+  }
+
+  function startWordLoop() {
+    if (!state.activePack) {
+      if (els.wordLoopStatus) els.wordLoopStatus.textContent = "Vocabulary is still loading.";
+      return;
+    }
+    const eligible = getModeEligibleVocabulary(state.activePack.cards || []);
+    if (!eligible.length) {
+      if (els.wordLoopStatus) els.wordLoopStatus.textContent = "No words are available in this quiz mode.";
+      return;
+    }
+
+    const requested = Math.max(1, Math.min(10000,
+      Math.round(Number(els.wordLoopCount?.value) || state.store.settings.wordLoopCount || 10)));
+    const count = Math.min(requested, eligible.length);
+    const queue = buildWordLoopQueue(count, eligible);
+    if (!queue.length) {
+      if (els.wordLoopStatus) els.wordLoopStatus.textContent = "No words are available to read.";
+      return;
+    }
+
+    if (wordLoopState.active) stopWordLoop({ silent: true });
+    stopAudio();
+    wordLoopState.active = true;
+    wordLoopState.token += 1;
+    wordLoopState.queue = queue;
+    wordLoopState.index = 0;
+    wordLoopState.repeats = Math.max(1, Math.min(10,
+      Math.round(Number(els.wordRepeatCount?.value) || state.store.settings.wordRepeat || 2)));
+    state.store.settings.wordLoopCount = count;
+    state.store.settings.wordRepeat = wordLoopState.repeats;
+    if (els.wordLoopCount) els.wordLoopCount.value = String(count);
+    if (els.wordRepeatCount) els.wordRepeatCount.value = String(wordLoopState.repeats);
+    if (els.wordRepeatLabel) els.wordRepeatLabel.textContent = String(wordLoopState.repeats);
+    saveStoredState();
+    updateWordLoopPreview();
+    void runWordLoop(wordLoopState.token);
+  }
+
+  function setupWordLoopSection() {
+    if (els.wordLoopCount) {
+      els.wordLoopCount.value = state.store.settings.wordLoopCount || 10;
+      els.wordLoopCount.addEventListener("input", () => {
+        if (wordLoopState.active) return;
+        const value = Number(els.wordLoopCount.value);
+        if (Number.isFinite(value) && value >= 1) {
+          state.store.settings.wordLoopCount = Math.min(10000, Math.round(value));
+          saveStoredState();
+        }
+        updateWordLoopPreview();
+      });
+      els.wordLoopCount.addEventListener("change", () => {
+        const max = Math.max(1, getModeEligibleVocabulary(state.activePack?.cards || []).length);
+        const value = Math.max(1, Math.min(max, Math.round(Number(els.wordLoopCount.value) || 1)));
+        els.wordLoopCount.value = String(value);
+        state.store.settings.wordLoopCount = value;
+        saveStoredState();
+        updateWordLoopPreview();
+      });
+    }
+    els.startWordLoopBtn?.addEventListener("click", startWordLoop);
+    els.stopWordLoopBtn?.addEventListener("click", () => stopWordLoop());
+    updateWordLoopPreview();
+  }
+
   /* -------------------------------------------------------------
      6. UI PRESENTATION & CARD RENDERING
   ------------------------------------------------------------- */
@@ -1313,6 +1576,7 @@
 
   function pauseLearning() {
     if (state.learningStatus !== "active") return;
+    if (wordLoopState.active) stopWordLoop({ silent: true });
     state.learningStatus = "paused";
     stopAudio();
     if (state.timerId) {
@@ -1661,12 +1925,14 @@
 
   function renderCard(card, { autoPlay = true } = {}) {
     if (state.learningStatus !== "active" || !card) return;
+    if (wordLoopState.active) stopWordLoop({ silent: true });
     // Avoid double-cancelling speech right before a new reading starts.
     // playCardSequence() handles cancellation for spoken cards.
     const automaticReadingOff = state.store.settings.readWords === false &&
       state.store.settings.readSentences === false;
     if (!autoPlay || automaticReadingOff) stopAudio();
     state.currentCard = card;
+    updateWordLoopPreview();
     state.quizAnswered = false;
     state.selectedChoiceId = null;
     state.currentReviewBaseline = null;
@@ -2052,6 +2318,7 @@
     els.countDue.textContent = dueCount;
     els.countReviewed.textContent = reviewedCount;
     els.countNew.textContent = newCount;
+    updateWordLoopPreview();
   }
 
   function renderDeckList() {
@@ -2612,6 +2879,35 @@
      10. SETTINGS & DATA EXPORT / IMPORT
   ------------------------------------------------------------- */
   function setupSettings() {
+    if (els.saveSettingsBtn) {
+      els.saveSettingsBtn.addEventListener("click", () => {
+        const settings = state.store.settings;
+        settings.theme = document.documentElement.getAttribute("data-theme") || "light";
+        settings.activePackId = state.activePack?.id || settings.activePackId;
+        settings.learningMode = ["chinese-to-english", "english-to-chinese", "chinese-to-picture"].includes(els.learningModeSelect?.value)
+          ? els.learningModeSelect.value : "chinese-to-english";
+        settings.translationLanguage = TranslationSupport.normalizeLanguage(els.meaningLanguageSelect?.value || settings.translationLanguage);
+        settings.audioEngine = ["auto", "online", "speechSynthesis"].includes(els.audioEngineSelect?.value)
+          ? els.audioEngineSelect.value : "auto";
+        settings.selectedVoice = els.voiceSelect?.value || "";
+        settings.volume = Math.max(0, Math.min(100, Number(els.volumeRange?.value ?? settings.volume) || 0));
+        settings.speed = Math.max(0.5, Math.min(1.5, Number(els.speedRange?.value ?? settings.speed) || 0.85));
+        settings.readWords = Boolean(els.readWordToggle?.checked);
+        settings.readSentences = Boolean(els.readSentenceToggle?.checked);
+        settings.wordRepeat = Math.max(1, Math.min(10, Math.round(Number(els.wordRepeatCount?.value) || 1)));
+        settings.wordLoopCount = Math.max(1, Math.min(10000, Math.round(Number(els.wordLoopCount?.value) || 10)));
+        settings.reminderEnabled = false;
+        settings.notificationsEnabled = false;
+        syncMeaningLanguageControls();
+        if (saveStoredState()) {
+          if (els.settingsSaveStatus) els.settingsSaveStatus.textContent = "Saved to this browser";
+          updateWordLoopPreview();
+          showToast("All settings saved.");
+        } else if (els.settingsSaveStatus) {
+          els.settingsSaveStatus.textContent = "Could not save. Check browser storage.";
+        }
+      });
+    }
     if (els.meaningLanguageSelect) {
       els.meaningLanguageSelect.addEventListener("change", event => {
         const target = TranslationSupport.normalizeLanguage(event.target.value);
@@ -2678,99 +2974,9 @@
       });
     }
 
-    // Reminder switch
-    els.reminderEnabled.checked = state.store.settings.reminderEnabled;
-    els.reminderEnabled.addEventListener("change", (e) => {
-      state.store.settings.reminderEnabled = e.target.checked;
-      saveStoredState();
-      scheduleNextReminder();
-    });
-
-    // Interval Hours, Minutes, Seconds
-    function updateIntervalSummary() {
-      const totalSec = getTotalIntervalSeconds();
-      if (els.intervalSummaryText) {
-        els.intervalSummaryText.textContent = formatTimeInterval(totalSec);
-      }
-    }
-
-    if (els.intervalHoursInput) {
-      els.intervalHoursInput.value = state.store.settings.intervalHours || 0;
-      els.intervalHoursInput.addEventListener("input", (e) => {
-        state.store.settings.intervalHours = Math.max(0, parseInt(e.target.value, 10) || 0);
-        updateIntervalSummary();
-        saveStoredState();
-        if (state.store.settings.reminderEnabled) scheduleNextReminder();
-      });
-    }
-
-    if (els.intervalMinutesInput) {
-      els.intervalMinutesInput.value = state.store.settings.intervalMinutes ?? 15;
-      els.intervalMinutesInput.addEventListener("input", (e) => {
-        state.store.settings.intervalMinutes = Math.max(0, parseInt(e.target.value, 10) || 0);
-        updateIntervalSummary();
-        saveStoredState();
-        if (state.store.settings.reminderEnabled) scheduleNextReminder();
-      });
-    }
-
-    if (els.intervalSecondsInput) {
-      els.intervalSecondsInput.value = state.store.settings.intervalSeconds || 0;
-      els.intervalSecondsInput.addEventListener("input", (e) => {
-        state.store.settings.intervalSeconds = Math.max(0, parseInt(e.target.value, 10) || 0);
-        updateIntervalSummary();
-        saveStoredState();
-        if (state.store.settings.reminderEnabled) scheduleNextReminder();
-      });
-    }
-
-    updateIntervalSummary();
-
-    // Preset Buttons
-    document.querySelectorAll(".preset-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const h = parseInt(btn.dataset.hours, 10) || 0;
-        const m = parseInt(btn.dataset.minutes, 10) || 0;
-        const s = parseInt(btn.dataset.seconds, 10) || 0;
-
-        state.store.settings.intervalHours = h;
-        state.store.settings.intervalMinutes = m;
-        state.store.settings.intervalSeconds = s;
-
-        if (els.intervalHoursInput) els.intervalHoursInput.value = h;
-        if (els.intervalMinutesInput) els.intervalMinutesInput.value = m;
-        if (els.intervalSecondsInput) els.intervalSecondsInput.value = s;
-
-        updateIntervalSummary();
-        saveStoredState();
-        if (state.store.settings.reminderEnabled) scheduleNextReminder();
-        showToast(`Interval set to ${formatTimeInterval(getTotalIntervalSeconds())}`);
-      });
-    });
-
-    // Notifications
-    els.enableBrowserNotifications.checked = state.store.settings.notificationsEnabled;
-    els.enableBrowserNotifications.addEventListener("change", async (e) => {
-      if (e.target.checked) {
-        if ("Notification" in window) {
-          const permission = await Notification.requestPermission();
-          if (permission === "granted") {
-            state.store.settings.notificationsEnabled = true;
-            showToast("Notifications enabled!");
-          } else {
-            state.store.settings.notificationsEnabled = false;
-            e.target.checked = false;
-            showToast("Notification permission was denied.");
-          }
-        } else {
-          showToast("Browser does not support notifications.");
-          e.target.checked = false;
-        }
-      } else {
-        state.store.settings.notificationsEnabled = false;
-      }
-      saveStoredState();
-    });
+    // Reminder and notification controls were removed from the minimal UI.
+    state.store.settings.reminderEnabled = false;
+    state.store.settings.notificationsEnabled = false;
 
     // Audio volume & speed
     els.volumeRange.value = state.store.settings.volume ?? 100;
@@ -2829,6 +3035,7 @@
       state.store.settings.wordRepeat = val;
       els.wordRepeatLabel.textContent = val;
       saveStoredState();
+      updateWordLoopPreview();
     });
 
     els.voiceSelect.addEventListener("change", (e) => {
@@ -3127,6 +3334,7 @@
     loadVoices();
     initTheme();
     setupLearningSessionControls();
+    setupWordLoopSection();
     setupActionButtons();
     setupDeckBrowser();
     setupTranslateSection();
@@ -3157,6 +3365,7 @@
       els.packSelect.addEventListener("change", (e) => {
         const nextPack = data.packs.find(p => p.id === e.target.value);
         if (nextPack) {
+          if (wordLoopState.active) stopWordLoop({ silent: true });
           state.activePack = nextPack;
           state.store.settings.activePackId = nextPack.id;
           state.currentCard = null;

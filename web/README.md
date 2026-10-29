@@ -244,3 +244,12 @@ Once the learner answers, a **Good — save for this word** button accepts the c
 ### Optional community-approved picture database
 
 A GitHub Pages website is read-only: without external storage, approved links are reusable **only on the current browser/device**. The existing optional HTTPS endpoint can make them shared across users. Configure the Actions repository variable `AI_IMAGE_APPROVAL_ENDPOINT` (the deployment process writes that URL into `ai-image-config.js`). The site calls `GET /approvals?key=<URL-encoded [Chinese word, English meaning]>` to reuse a shared approval and sends `POST /approvals` with the metadata record after a Good vote. The endpoint must implement persistence, moderation and reasonable traffic limits independently; simply setting an unused URL does not deploy a database. No Google/Gemini secret or API key is used by v34.
+
+
+## Minimal settings and continuous word-loop player (v35)
+
+The Study page now includes a **Word loop** panel. Enter how many vocabulary words to include and how many times each word should be spoken, then press **Start loop**. It reads the selected word repeatedly, advances to the next word, and returns to the first word after the last. **Stop** cancels playback. The current word is highlighted in the preview, which follows the active pack and learning mode. The default queue puts the current card first, then due reviews, unseen cards, deferred new cards, and upcoming reviews. The queue is a fixed snapshot for the duration of a loop. This is audio practice only; it does not change SRS ratings.
+
+The compact Settings view keeps quiz direction, meaning language, automatic word/example playback, volume and speed in view. Voice and engine choices are under **More audio options**, while save slots, export/import, and progress reset are grouped under **Save files and backups**. The obsolete reminder cadence, desktop notification, optional on-device translation and audio diagnostic controls were removed from the settings screen. The **Save settings** button collects and saves all visible and advanced preferences into the active browser save; existing autosave behavior is retained for safety.
+
+The interface uses a flatter neutral palette, reduced shadows and more restrained spacing. Both **web/** and **docs/** publish the same v35 app, styles and service-worker cache.
