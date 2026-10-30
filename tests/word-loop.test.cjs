@@ -101,11 +101,22 @@ test("settings are simplified while advanced reminders and attribution remain av
   assert.match(html, /CC-CEDICT/);
 });
 
+test("word loop shows only the current word with its meaning", () => {
+  assert.match(html, /<div id="wordLoopPreview" class="word-loop-current"/);
+  assert.match(html, /id="wordLoopCurrentWord"/);
+  assert.match(html, /id="wordLoopCurrentMeaning"/);
+  assert.doesNotMatch(html, /<ol id="wordLoopPreview"/);
+  const preview = extract("  function updateWordLoopPreview()", "  function stopWordLoop(");
+  assert.match(preview, /wordLoopState\.active \? queue\[wordLoopState.index\] : queue\[0\]/);
+  assert.doesNotMatch(preview, /queue\.slice|visible\.forEach|replaceChildren/);
+  assert.match(app, /TranslationSupport\.localizePresentation\(\s*card, null/);
+});
+
 test("word-loop and settings markup is mirrored by the app script and cache version", () => {
-  assert.match(html, /app\.js\?v=35/);
-  assert.match(html, /style\.css\?v=35/);
+  assert.match(html, /app\.js\?v=36/);
+  assert.match(html, /style\.css\?v=36/);
   const sw = fs.readFileSync(path.join(root, "web/sw.js"), "utf8");
-  assert.match(sw, /vocab-srs-cache-v35/);
-  assert.match(sw, /\.\/app\.js\?v=35/);
-  assert.match(sw, /\.\/style\.css\?v=35/);
+  assert.match(sw, /vocab-srs-cache-v36/);
+  assert.match(sw, /\.\/app\.js\?v=36/);
+  assert.match(sw, /\.\/style\.css\?v=36/);
 });
