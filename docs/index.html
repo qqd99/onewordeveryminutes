@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=35" />
+  <link rel="stylesheet" href="style.css?v=36" />
 </head>
 <body>
   <!-- Top App Header -->
@@ -92,7 +92,7 @@
         <div class="word-loop-heading">
           <div>
             <h2 id="wordLoopTitle">Word loop</h2>
-            <p>Listen to a fixed list of Chinese words. The list repeats until you stop it; this does not change review ratings.</p>
+            <p>Listen to one word at a time. Each word appears with its meaning and is repeated before the next word appears.</p>
           </div>
           <div class="word-loop-controls">
             <label class="word-loop-field">
@@ -108,7 +108,11 @@
           </div>
         </div>
         <p id="wordLoopStatus" class="word-loop-status" role="status">Choose how many words to hear, then start the loop.</p>
-        <ol id="wordLoopPreview" class="word-loop-preview" aria-label="Words in the loop"></ol>
+        <div id="wordLoopPreview" class="word-loop-current" aria-live="polite" aria-atomic="true">
+          <span id="wordLoopCurrentWord" class="word-loop-current-word">—</span>
+          <span id="wordLoopCurrentSeparator" class="word-loop-current-separator" aria-hidden="true">—</span>
+          <span id="wordLoopCurrentMeaning" class="word-loop-current-meaning">The current word will appear here.</span>
+        </div>
       </section>
 
       <!-- Flashcard / Quiz Component -->
@@ -560,6 +564,6 @@
   <script src="ai-image-config.js?v=34"></script>
   <script src="picture-catalog.js?v=30"></script>
   <script src="internet-picture.js?v=34"></script>
-  <script src="app.js?v=35"></script>
+  <script src="app.js?v=36"></script>
 </body>
 </html>
