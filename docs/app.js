@@ -53,6 +53,7 @@
 
   const defaultStore = JSON.parse(JSON.stringify(state.store));
   const wordLoopState = { active: false, token: 0, queue: [], index: 0, repeats: 2 };
+  let wordLoopMeaningGeneration = 0;
   let saveSlots = null;
 
   // DOM Elements cache
@@ -153,6 +154,9 @@
     wordLoopCount: $("#wordLoopCount"),
     wordLoopStatus: $("#wordLoopStatus"),
     wordLoopPreview: $("#wordLoopPreview"),
+    wordLoopCurrentWord: $("#wordLoopCurrentWord"),
+    wordLoopCurrentMeaning: $("#wordLoopCurrentMeaning"),
+    wordLoopCurrentSeparator: $("#wordLoopCurrentSeparator"),
     startWordLoopBtn: $("#startWordLoopBtn"),
     stopWordLoopBtn: $("#stopWordLoopBtn"),
     reminderEnabled: $("#reminderEnabled"),
@@ -1271,11 +1275,36 @@
     return unique.slice(0, count);
   }
 
+  async function updateWordLoopCurrentMeaning(card, generation) {
+    const fallback = card.meaning || "Meaning unavailable";
+    const target = TranslationSupport.normalizeLanguage(state.store.settings.translationLanguage);
+    if (target === "en") return;
+
+    try {
+      const localized = await TranslationSupport.localizePresentation(
+        card, null, target, TranslationSupport.sourceLanguage(state.activePack),
+        false, false, state.activePack?.cards || []
+      );
+      if (generation !== wordLoopMeaningGeneration) return;
+      if (els.wordLoopCurrentMeaning) {
+        els.wordLoopCurrentMeaning.textContent = localized?.card?.meaning || fallback;
+      }
+    } catch (error) {
+      if (generation === wordLoopMeaningGeneration && els.wordLoopCurrentMeaning) {
+        els.wordLoopCurrentMeaning.textContent = fallback;
+      }
+    }
+  }
+
   function updateWordLoopPreview() {
     if (!els.wordLoopPreview || !els.wordLoopStatus) return;
     if (!state.activePack) {
+      wordLoopMeaningGeneration += 1;
       els.wordLoopStatus.textContent = "Loading vocabulary…";
       if (els.startWordLoopBtn) els.startWordLoopBtn.disabled = true;
+      if (els.wordLoopCurrentWord) els.wordLoopCurrentWord.textContent = "—";
+      if (els.wordLoopCurrentMeaning) els.wordLoopCurrentMeaning.textContent = "Loading vocabulary…";
+      if (els.wordLoopCurrentSeparator) els.wordLoopCurrentSeparator.hidden = true;
       return;
     }
 
@@ -1295,17 +1324,19 @@
     const repeats = wordLoopState.active
       ? wordLoopState.repeats
       : Math.max(1, Math.min(10, Math.round(Number(els.wordRepeatCount?.value || state.store.settings.wordRepeat) || 2)));
+    const card = queue.length
+      ? (wordLoopState.active ? queue[wordLoopState.index] : queue[0])
+      : null;
 
     if (wordLoopState.active) {
-      const card = queue[wordLoopState.index];
       els.wordLoopStatus.textContent = card
-        ? "Playing " + (wordLoopState.index + 1) + " of " + queue.length + ": " + card.front + " · " + repeats + "×"
+        ? "Word " + (wordLoopState.index + 1) + " of " + queue.length + " · " + repeats + "×"
         : "Word loop stopped.";
     } else if (!eligible.length) {
       els.wordLoopStatus.textContent = "No words are available in this quiz mode.";
     } else {
       els.wordLoopStatus.textContent =
-        queue.length + " words ready · " + repeats + "× each. Audio only; SRS ratings are unchanged.";
+        queue.length + " words ready · " + repeats + "× each. Only the current word is shown.";
     }
 
     if (els.startWordLoopBtn) els.startWordLoopBtn.hidden = wordLoopState.active;
@@ -1315,47 +1346,13 @@
     if (els.wordLoopCount) els.wordLoopCount.disabled = wordLoopState.active;
     if (els.wordRepeatCount) els.wordRepeatCount.disabled = wordLoopState.active;
 
-    els.wordLoopPreview.replaceChildren();
-    if (!queue.length) {
-      const empty = document.createElement("li");
-      empty.textContent = "No words available";
-      empty.className = "word-loop-more";
-      els.wordLoopPreview.appendChild(empty);
-      return;
+    const generation = ++wordLoopMeaningGeneration;
+    if (els.wordLoopCurrentWord) els.wordLoopCurrentWord.textContent = card?.front || "—";
+    if (els.wordLoopCurrentMeaning) {
+      els.wordLoopCurrentMeaning.textContent = card?.meaning || (card ? "Meaning unavailable" : "No words available");
     }
-
-    const maxVisible = 12;
-    let start = 0;
-    if (wordLoopState.active && wordLoopState.index >= maxVisible) {
-      start = Math.min(wordLoopState.index - Math.floor(maxVisible / 2),
-        Math.max(0, queue.length - maxVisible));
-    }
-    const visible = queue.slice(start, start + maxVisible);
-    visible.forEach((card, offset) => {
-      const index = start + offset;
-      const item = document.createElement("li");
-      if (wordLoopState.active && index === wordLoopState.index) {
-        item.classList.add("is-current");
-        item.setAttribute("aria-current", "true");
-      }
-      const hanzi = document.createElement("span");
-      hanzi.className = "word-loop-hanzi";
-      hanzi.textContent = card.front || "";
-      item.appendChild(hanzi);
-      if (card.reading) {
-        const reading = document.createElement("span");
-        reading.className = "word-loop-reading";
-        reading.textContent = card.reading;
-        item.appendChild(reading);
-      }
-      els.wordLoopPreview.appendChild(item);
-    });
-    if (queue.length > visible.length) {
-      const more = document.createElement("li");
-      more.className = "word-loop-more";
-      more.textContent = (queue.length - visible.length) + " more";
-      els.wordLoopPreview.appendChild(more);
-    }
+    if (els.wordLoopCurrentSeparator) els.wordLoopCurrentSeparator.hidden = !card;
+    if (card) void updateWordLoopCurrentMeaning(card, generation);
   }
 
   function stopWordLoop({ silent = false } = {}) {
@@ -2924,6 +2921,7 @@
         state.store.settings.translationLanguage = target;
         if (els.translateTargetSelect) els.translateTargetSelect.value = target;
         saveStoredState();
+        updateWordLoopPreview();
         if (state.currentCard && state.currentQuiz) {
           void localizeRenderedCard(state.currentCard, state.currentQuiz, isEnglishToChineseMode());
         }
