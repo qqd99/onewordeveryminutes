@@ -1931,36 +1931,30 @@ input:checked + .slider:before {
   color: var(--text-muted);
   font-size: 12px;
 }
-.word-loop-preview {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-  padding: 0;
-  list-style: none;
-}
-.word-loop-preview li {
+.word-loop-current {
   display: flex;
   align-items: baseline;
-  gap: 6px;
-  padding: 5px 9px;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-height: 64px;
+  margin-top: 10px;
+  padding: 14px 16px;
   border: 1px solid var(--border-subtle);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--bg-card-sub);
-  color: var(--text-secondary);
-  font-size: 12px;
 }
-.word-loop-preview li.is-current {
-  border-color: var(--primary-border);
-  background: var(--primary-light);
+.word-loop-current-word {
   color: var(--text-main);
+  font-family: var(--font-hanzi);
+  font-size: 26px;
+  font-weight: 700;
 }
-.word-loop-hanzi { font-family: var(--font-hanzi); font-size: 15px; font-weight: 650; }
-.word-loop-reading { color: var(--text-muted); font-size: 11px; }
-.word-loop-preview .word-loop-more {
-  border-style: dashed;
-  background: transparent;
-  color: var(--text-muted);
+.word-loop-current-separator { color: var(--text-muted); font-size: 15px; }
+.word-loop-current-separator[hidden] { display: none; }
+.word-loop-current-meaning {
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.5;
 }
 .btn, .icon-button, .audio-btn, .choice-btn { box-shadow: none; }
 @media (max-width: 640px) {
