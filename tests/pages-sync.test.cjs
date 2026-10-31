@@ -63,7 +63,7 @@ test("both published pages allow ten word repetitions", () => {
     const html = fs.readFileSync(path.join(root, directory, "index.html"), "utf8");
     const app = fs.readFileSync(path.join(root, directory, "app.js"), "utf8");
     assert.ok(html.includes('id="wordRepeatCount" class="input-number" min="1" max="10"'));
-    assert.ok(html.includes("app.js?v=36"));
+    assert.ok(html.includes("app.js?v=37"));
     assert.ok(app.includes("const count = Math.min(10, Math.max(1, Math.round(Number(repeat) || 2)));"));
     assert.ok(!app.includes("const count = Math.min(5, Math.max(1, Math.round(Number(repeat) || 2)));"));
   }
@@ -84,7 +84,7 @@ test("both published pages use the bundled photographic dataset", () => {
     assert.ok(html.includes('id="wordLoopPanel"'));
     assert.match(catalog, /imageHref/);
     assert.match(html, /photoRetryBtn/);
-    assert.match(sw, /vocab-srs-cache-v36/);
+    assert.match(sw, /vocab-srs-cache-v37/);
   }
 });
 
@@ -98,7 +98,7 @@ test("Wikimedia Commons picture search and fallback stay synchronized across pub
   const cache = fs.readFileSync(path.join(root, "web/sw.js"), "utf8");
   assert.ok(html.includes("internet-picture.js?v=34"));
   assert.ok(html.includes("ai-image-config.js?v=34"));
-  assert.ok(html.includes("style.css?v=36"));
-  assert.ok(cache.includes("vocab-srs-cache-v36"));
+  assert.ok(html.includes("style.css?v=37"));
+  assert.ok(cache.includes("vocab-srs-cache-v37"));
   assert.ok(cache.includes("internet-picture.js?v=34"));
 });
