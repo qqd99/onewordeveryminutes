@@ -155,6 +155,7 @@
     wordLoopStatus: $("#wordLoopStatus"),
     wordLoopPreview: $("#wordLoopPreview"),
     wordLoopCurrentWord: $("#wordLoopCurrentWord"),
+    wordLoopCurrentReading: $("#wordLoopCurrentReading"),
     wordLoopCurrentMeaning: $("#wordLoopCurrentMeaning"),
     wordLoopCurrentSeparator: $("#wordLoopCurrentSeparator"),
     startWordLoopBtn: $("#startWordLoopBtn"),
@@ -1303,6 +1304,7 @@
       els.wordLoopStatus.textContent = "Loading vocabulary…";
       if (els.startWordLoopBtn) els.startWordLoopBtn.disabled = true;
       if (els.wordLoopCurrentWord) els.wordLoopCurrentWord.textContent = "—";
+      if (els.wordLoopCurrentReading) { els.wordLoopCurrentReading.textContent = ""; els.wordLoopCurrentReading.hidden = true; }
       if (els.wordLoopCurrentMeaning) els.wordLoopCurrentMeaning.textContent = "Loading vocabulary…";
       if (els.wordLoopCurrentSeparator) els.wordLoopCurrentSeparator.hidden = true;
       return;
@@ -1348,6 +1350,10 @@
 
     const generation = ++wordLoopMeaningGeneration;
     if (els.wordLoopCurrentWord) els.wordLoopCurrentWord.textContent = card?.front || "—";
+    if (els.wordLoopCurrentReading) {
+      els.wordLoopCurrentReading.textContent = card?.reading || "";
+      els.wordLoopCurrentReading.hidden = !card?.reading;
+    }
     if (els.wordLoopCurrentMeaning) {
       els.wordLoopCurrentMeaning.textContent = card?.meaning || (card ? "Meaning unavailable" : "No words available");
     }
