@@ -116,10 +116,10 @@ test("word loop shows only the current word with its meaning", () => {
 });
 
 test("word-loop and settings markup is mirrored by the app script and cache version", () => {
-  assert.match(html, /app\.js\?v=36/);
-  assert.match(html, /style\.css\?v=36/);
+  assert.match(html, /app\.js\?v=37/);
+  assert.match(html, /style\.css\?v=37/);
   const sw = fs.readFileSync(path.join(root, "web/sw.js"), "utf8");
-  assert.match(sw, /vocab-srs-cache-v36/);
-  assert.match(sw, /\.\/app\.js\?v=36/);
-  assert.match(sw, /\.\/style\.css\?v=36/);
+  assert.match(sw, /vocab-srs-cache-v37/);
+  assert.match(sw, /\.\/app\.js\?v=37/);
+  assert.match(sw, /\.\/style\.css\?v=37/);
 });
