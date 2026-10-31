@@ -1949,6 +1949,15 @@ input:checked + .slider:before {
   font-size: 26px;
   font-weight: 700;
 }
+.word-loop-current-reading {
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.word-loop-current-reading[hidden] { display: none; }
 .word-loop-current-separator { color: var(--text-muted); font-size: 15px; }
 .word-loop-current-separator[hidden] { display: none; }
 .word-loop-current-meaning {
