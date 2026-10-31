@@ -104,12 +104,15 @@ test("settings are simplified while advanced reminders and attribution remain av
 test("word loop shows only the current word with its meaning", () => {
   assert.match(html, /<div id="wordLoopPreview" class="word-loop-current"/);
   assert.match(html, /id="wordLoopCurrentWord"/);
+  assert.match(html, /id="wordLoopCurrentReading"/);
   assert.match(html, /id="wordLoopCurrentMeaning"/);
   assert.doesNotMatch(html, /<ol id="wordLoopPreview"/);
   const preview = extract("  function updateWordLoopPreview()", "  function stopWordLoop(");
   assert.match(preview, /wordLoopState\.active \? queue\[wordLoopState.index\] : queue\[0\]/);
   assert.doesNotMatch(preview, /queue\.slice|visible\.forEach|replaceChildren/);
   assert.match(app, /TranslationSupport\.localizePresentation\(\s*card, null/);
+  assert.match(preview, /card\?\.reading \|\| ""/);
+  assert.match(preview, /wordLoopCurrentReading\.hidden = !card\?\.reading/);
 });
 
 test("word-loop and settings markup is mirrored by the app script and cache version", () => {
