@@ -227,14 +227,16 @@
       .sort((a, b) => a.at - b.at || a.index - b.index)
       .map(entry => entry.id);
     const valid = new Set(learned);
+    const recorded = new Set();
     const explicit = [];
-    for (const id of Array.isArray(raw) ? raw : []) {
-      if (typeof id !== "string" || !valid.has(id)) continue;
-      const previous = explicit.indexOf(id);
-      if (previous !== -1) explicit.splice(previous, 1);
+    const supplied = Array.isArray(raw) ? raw : [];
+    for (let i = supplied.length - 1; i >= 0; i--) {
+      const id = supplied[i];
+      if (typeof id !== "string" || !valid.has(id) || recorded.has(id)) continue;
+      recorded.add(id);
       explicit.push(id);
     }
-    const recorded = new Set(explicit);
+    explicit.reverse();
     return [...learned.filter(id => !recorded.has(id)), ...explicit].slice(-10000);
   }
 
@@ -3235,6 +3237,7 @@
         saveStoredState();
         updateDashboardCounts();
         renderDeckList();
+        updateWordLoopPreview();
         renderSaveSlotControls();
         showToast(`Successfully imported progress for ${count} cards!`);
       } catch (err) {
@@ -3288,6 +3291,7 @@
       saveStoredState();
       updateDashboardCounts();
       renderDeckList();
+      updateWordLoopPreview();
       if (state.learningStatus === "active") {
         presentNextCard({ autoPlay: false });
       } else {
