@@ -16,38 +16,78 @@ function extract(first, last) {
   return app.slice(start, end);
 }
 
-test("word-loop queue prioritizes the current word, due reviews, then unseen words", () => {
-  const queueCode = extract("  function buildWordLoopQueue(", "  function updateWordLoopPreview(");
-  const now = Date.now();
-  const cards = [
-    {id:"new-a",front:"新一",meaning:"new one"},
-    {id:"due-later",front:"迟",meaning:"late"},
-    {id:"current",front:"现在",meaning:"now"},
-    {id:"deferred",front:"暂",meaning:"deferred"},
-    {id:"due-first",front:"早",meaning:"early"},
-    {id:"future",front:"后",meaning:"future"},
-    {id:"new-b",front:"新二",meaning:"new two"}
-  ];
-  const progress = {
-    "due-later": {lastReviewedAt:now-1000,dueAt:now-1000},
-    current: {lastReviewedAt:now-1000,dueAt:now+50000},
-    deferred: {lastShownAt:now-5000},
-    "due-first": {lastReviewedAt:now-10000,dueAt:now-10000},
-    future: {lastReviewedAt:now-1000,dueAt:now+100000}
-  };
+test("loop 5 uses words 6–10, then slides to 9–13 after studying 11–13", () => {
+  const queueCode = extract("  function buildWordLoopQueue(", "  async function updateWordLoopCurrentMeaning(");
+  const cards = Array.from({length: 15}, (_, index) => ({
+    id: String(index + 1), front: String(index + 1), meaning: "Word " + (index + 1)
+  }));
+  const progress = {};
+  const recentWordIds = [];
   const context = {
-    Date,
-    Set,
-    state: {activePack:{cards},currentCard:cards[2],store:{progress}},
-    getModeEligibleVocabulary: list => list,
-    normalizeProgress: p => ({dueAt:p?.dueAt||0,lastShownAt:p?.lastShownAt||0}),
-    wasEverShown: p => Boolean(p?.lastShownAt||p?.lastReviewedAt||p?.remembered||p?.forgotten),
-    wasEverReviewed: p => Boolean(p?.lastReviewedAt||p?.remembered||p?.forgotten)
+    Map, state: {activePack: {cards}, store: {recentWordIds, progress}},
+    getModeEligibleVocabulary: list => list
   };
   vm.runInNewContext(queueCode + "\nglobalThis.build = buildWordLoopQueue;", context);
-  const ids = Array.from(context.build(5), card => card.id);
-  assert.deepEqual(ids, ["current","due-first","due-later","new-a","new-b"]);
-  assert.equal(new Set(ids).size, ids.length);
+  const ids = () => Array.from(context.build(5), card => card.id);
+  for (let i = 1; i <= 10; i++) {
+    progress[String(i)] = {lastShownAt: 1000 + i};
+    recentWordIds.push(String(i));
+  }
+  assert.deepEqual(ids(), ["6", "7", "8", "9", "10"]);
+  for (let i = 11; i <= 13; i++) {
+    progress[String(i)] = {lastShownAt: 1000 + i};
+    recentWordIds.push(String(i));
+  }
+  assert.deepEqual(ids(), ["9", "10", "11", "12", "13"]);
+  // An unseen word must never appear merely to fill the configured count.
+  assert.ok(!ids().includes("14"));
+  assert.deepEqual(Array.from(context.build(20), card => card.id), recentWordIds);
+});
+
+test("word order is based on learning history, not due dates or vocabulary order", () => {
+  const queueCode = extract("  function buildWordLoopQueue(", "  async function updateWordLoopCurrentMeaning(");
+  const cards = [
+    {id: "4"}, {id: "2"}, {id: "3"}, {id: "1"}, {id: "5"}, {id: "unseen"}
+  ];
+  const progress = {
+    "1": {lastShownAt: 10, dueAt: 99999},
+    "2": {lastShownAt: 20, dueAt: 1},
+    "3": {lastShownAt: 30, dueAt: 999},
+    "4": {lastShownAt: 40, dueAt: 0},
+    "5": {lastShownAt: 50, dueAt: 4}
+  };
+  const context = {
+    Map, state: {activePack: {cards}, store: {
+      recentWordIds: ["1", "2", "3", "4", "5"], progress
+    }},
+    getModeEligibleVocabulary: list => list
+  };
+  vm.runInNewContext(queueCode + "\nglobalThis.build = buildWordLoopQueue;", context);
+  assert.deepEqual(Array.from(context.build(3), card => card.id), ["3", "4", "5"]);
+  assert.deepEqual(Array.from(context.build(5, cards.slice(0, 3)), card => card.id), ["2", "4"]);
+});
+
+test("legacy saves reconstruct word order using recorded study timestamps", () => {
+  const normalizeCode = extract("  function normalizeRecentWordIds(", "  function normalizeSaveStore(");
+  const context = {Object, Number, Array, Set};
+  vm.runInNewContext(normalizeCode + "\nglobalThis.normalize = normalizeRecentWordIds;", context);
+  const progress = {
+    "2": {lastShownAt: 200}, "1": {lastShownAt: 100},
+    "3": {lastReviewedAt: 300}, unseen: {}
+  };
+  assert.deepEqual(Array.from(context.normalize(null, progress)), ["1", "2", "3"]);
+  assert.deepEqual(Array.from(context.normalize(["3", "1", "2"], progress)), ["3", "1", "2"]);
+  assert.deepEqual(Array.from(context.normalize(["3", "1", "1", "invalid", "2"], progress)), ["3", "1", "2"]);
+});
+
+test("learning history is updated on card presentation and persists across saves", () => {
+  assert.match(app, /state\.store\.recentWordIds = \[\s*\.\.\.\(state\.store\.recentWordIds \|\| \[\]\)\.filter\(id => id !== card\.id\), card\.id/);
+  assert.match(app, /state\.store\.recentWordIds = \[\];/);
+  assert.match(app, /recentWordIds: normalizeRecentWordIds\(stored\.recentWordIds, stored\.progress\)/);
+  assert.match(app, /recentWordIds: state\.store\.recentWordIds/);
+  assert.match(app, /recentWordIds: imported\?\.recentWordIds/);
+  assert.match(app, /buildWordLoopQueue\(requested, eligible\)/);
+  assert.match(app, /state\.store\.settings\.wordLoopCount = requested/);
 });
 
 test("word loop runs indefinitely, wraps to its first word, and can be stopped", () => {
