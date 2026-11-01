@@ -41,6 +41,7 @@
         notificationsEnabled: false
       },
       progress: {},
+      recentWordIds: [],
       lastCardId: null,
       currentCardId: null
     },
@@ -213,6 +214,30 @@
     return JSON.parse(JSON.stringify(value));
   }
 
+  // Preserve the order in which unique words were studied, including across saves.
+  // Older backups have only timestamps, so reconstruct their best-known order.
+  function normalizeRecentWordIds(raw, progress) {
+    const learned = Object.entries(progress || {})
+      .filter(([, value]) => value && typeof value === "object" &&
+        (Number(value.lastShownAt) > 0 || Number(value.lastReviewedAt) > 0))
+      .map(([id, value], index) => ({
+        id, index,
+        at: Math.max(Number(value.lastShownAt) || 0, Number(value.lastReviewedAt) || 0)
+      }))
+      .sort((a, b) => a.at - b.at || a.index - b.index)
+      .map(entry => entry.id);
+    const valid = new Set(learned);
+    const explicit = [];
+    for (const id of Array.isArray(raw) ? raw : []) {
+      if (typeof id !== "string" || !valid.has(id)) continue;
+      const previous = explicit.indexOf(id);
+      if (previous !== -1) explicit.splice(previous, 1);
+      explicit.push(id);
+    }
+    const recorded = new Set(explicit);
+    return [...learned.filter(id => !recorded.has(id)), ...explicit].slice(-10000);
+  }
+
   function normalizeSaveStore(raw) {
     const stored = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
     const settings = stored.settings && typeof stored.settings === "object" &&
@@ -221,6 +246,7 @@
       settings: { ...defaultStore.settings, ...settings },
       progress: stored.progress && typeof stored.progress === "object" &&
         !Array.isArray(stored.progress) ? cloneSaveData(stored.progress) : {},
+      recentWordIds: normalizeRecentWordIds(stored.recentWordIds, stored.progress),
       lastCardId: typeof stored.lastCardId === "string" ? stored.lastCardId : null,
       currentCardId: typeof stored.currentCardId === "string" ? stored.currentCardId : null
     };
@@ -478,7 +504,7 @@
       if (name === null) return;
       const id = addSaveSlot(name, {
         settings: cloneSaveData(state.store.settings),
-        progress: {}, currentCardId: null, lastCardId: null
+        progress: {}, recentWordIds: [], currentCardId: null, lastCardId: null
       });
       if (id) switchSaveSlot(id);
     });
@@ -565,6 +591,7 @@
               : state.store.settings.readWords
           },
           progress,
+          recentWordIds: imported?.recentWordIds ?? imported?.payload?.recentWordIds,
           currentCardId: imported?.currentCardId ?? imported?.payload?.currentCardId,
           lastCardId: imported?.lastCardId ?? imported?.payload?.lastCardId
         });
@@ -1232,48 +1259,14 @@
 
   function buildWordLoopQueue(limit, eligible = getModeEligibleVocabulary(state.activePack?.cards || [])) {
     if (!eligible.length) return [];
-    const now = Date.now();
-    const current = state.currentCard
-      ? eligible.find(card => card.id === state.currentCard.id) || null : null;
-    const dueReviewed = [];
-    const unseen = [];
-    const deferredNew = [];
-    const futureReviewed = [];
-
-    for (const card of eligible) {
-      if (card.id === current?.id) continue;
-      const progress = state.store.progress[card.id];
-      if (!wasEverShown(progress)) {
-        unseen.push(card);
-      } else if (!wasEverReviewed(progress)) {
-        deferredNew.push(card);
-      } else {
-        const normalized = normalizeProgress(progress);
-        if ((normalized.dueAt || 0) <= now) dueReviewed.push(card);
-        else futureReviewed.push(card);
-      }
-    }
-
-    dueReviewed.sort((a, b) =>
-      (normalizeProgress(state.store.progress[a.id]).dueAt || 0) -
-      (normalizeProgress(state.store.progress[b.id]).dueAt || 0));
-    deferredNew.sort((a, b) =>
-      (normalizeProgress(state.store.progress[a.id]).lastShownAt || 0) -
-      (normalizeProgress(state.store.progress[b.id]).lastShownAt || 0));
-    futureReviewed.sort((a, b) =>
-      (normalizeProgress(state.store.progress[a.id]).dueAt || 0) -
-      (normalizeProgress(state.store.progress[b.id]).dueAt || 0));
-
-    const ordered = [current, ...dueReviewed, ...unseen, ...deferredNew, ...futureReviewed]
-      .filter(Boolean);
-    const seen = new Set();
-    const unique = ordered.filter(card => {
-      if (seen.has(card.id)) return false;
-      seen.add(card.id);
-      return true;
-    });
-    const count = Math.max(1, Math.min(unique.length, Math.round(Number(limit) || 1)));
-    return unique.slice(0, count);
+    const byId = new Map(eligible.map(card => [card.id, card]));
+    const recent = Array.isArray(state.store.recentWordIds)
+      ? state.store.recentWordIds
+      : normalizeRecentWordIds(null, state.store.progress);
+    const learned = recent.map(id => byId.get(id)).filter(Boolean);
+    const count = Math.max(1, Math.min(learned.length, Math.round(Number(limit) || 1)));
+    // Keep the last N learned words, in study order (oldest to newest).
+    return learned.slice(-count);
   }
 
   async function updateWordLoopCurrentMeaning(card, generation) {
@@ -1334,16 +1327,16 @@
       els.wordLoopStatus.textContent = card
         ? "Word " + (wordLoopState.index + 1) + " of " + queue.length + " · " + repeats + "×"
         : "Word loop stopped.";
-    } else if (!eligible.length) {
-      els.wordLoopStatus.textContent = "No words are available in this quiz mode.";
+    } else if (!queue.length) {
+      els.wordLoopStatus.textContent = "No learned words yet. Study a word to add it to your loop.";
     } else {
       els.wordLoopStatus.textContent =
-        queue.length + " words ready · " + repeats + "× each. Only the current word is shown.";
+        queue.length + " most recently learned words ready · " + repeats + "× each.";
     }
 
     if (els.startWordLoopBtn) els.startWordLoopBtn.hidden = wordLoopState.active;
     if (els.stopWordLoopBtn) els.stopWordLoopBtn.hidden = !wordLoopState.active;
-    if (els.startWordLoopBtn) els.startWordLoopBtn.disabled = !eligible.length || wordLoopState.active;
+    if (els.startWordLoopBtn) els.startWordLoopBtn.disabled = !queue.length || wordLoopState.active;
     if (els.stopWordLoopBtn) els.stopWordLoopBtn.disabled = !wordLoopState.active;
     if (els.wordLoopCount) els.wordLoopCount.disabled = wordLoopState.active;
     if (els.wordRepeatCount) els.wordRepeatCount.disabled = wordLoopState.active;
@@ -1421,10 +1414,9 @@
 
     const requested = Math.max(1, Math.min(10000,
       Math.round(Number(els.wordLoopCount?.value) || state.store.settings.wordLoopCount || 10)));
-    const count = Math.min(requested, eligible.length);
-    const queue = buildWordLoopQueue(count, eligible);
+    const queue = buildWordLoopQueue(requested, eligible);
     if (!queue.length) {
-      if (els.wordLoopStatus) els.wordLoopStatus.textContent = "No words are available to read.";
+      if (els.wordLoopStatus) els.wordLoopStatus.textContent = "No learned words yet. Study a word first.";
       return;
     }
 
@@ -1441,9 +1433,9 @@
     wordLoopState.index = 0;
     wordLoopState.repeats = Math.max(1, Math.min(10,
       Math.round(Number(els.wordRepeatCount?.value) || state.store.settings.wordRepeat || 2)));
-    state.store.settings.wordLoopCount = count;
+    state.store.settings.wordLoopCount = requested;
     state.store.settings.wordRepeat = wordLoopState.repeats;
-    if (els.wordLoopCount) els.wordLoopCount.value = String(count);
+    if (els.wordLoopCount) els.wordLoopCount.value = String(requested);
     if (els.wordRepeatCount) els.wordRepeatCount.value = String(wordLoopState.repeats);
     if (els.wordRepeatLabel) els.wordRepeatLabel.textContent = String(wordLoopState.repeats);
     saveStoredState();
@@ -1942,7 +1934,6 @@
       state.store.settings.readSentences === false;
     if (!autoPlay || automaticReadingOff) stopAudio();
     state.currentCard = card;
-    if (typeof updateWordLoopPreview === "function") updateWordLoopPreview();
     state.quizAnswered = false;
     state.selectedChoiceId = null;
     state.currentReviewBaseline = null;
@@ -2093,7 +2084,11 @@
       state.store.progress[card.id],
       getSrsDisplayMinutes()
     );
+    state.store.recentWordIds = [
+      ...(state.store.recentWordIds || []).filter(id => id !== card.id), card.id
+    ].slice(-10000);
     saveStoredState();
+    updateWordLoopPreview();
 
     // Either switch can independently trigger automatic pronunciation.
     if (autoPlay && (state.store.settings.readWords !== false ||
@@ -3137,6 +3132,7 @@
         exportedAt: new Date().toISOString(),
         settings: state.store.settings,
         progress: state.store.progress,
+        recentWordIds: state.store.recentWordIds,
         currentCardId: state.store.currentCardId,
         lastCardId: state.store.lastCardId
       };
@@ -3185,6 +3181,9 @@
           count += 1;
         }
         if (!count) throw new Error("No matching vocabulary progress found in backup.");
+        state.store.recentWordIds = normalizeRecentWordIds(
+          imported?.recentWordIds ?? imported?.payload?.recentWordIds, state.store.progress
+        );
         state.currentReviewBaseline = null;
 
         // Backups also contain the user's audio preferences. Restore only
@@ -3283,6 +3282,7 @@
 
     els.confirmResetBtn.addEventListener("click", () => {
       state.store.progress = {};
+      state.store.recentWordIds = [];
       state.store.currentCardId = null;
       state.store.lastCardId = null;
       saveStoredState();
@@ -3457,6 +3457,7 @@
           saveStoredState();
           updateDashboardCounts();
           renderDeckList();
+          updateWordLoopPreview();
           if (state.learningStatus === "active") {
             presentNextCard({ autoPlay: false });
           } else {
