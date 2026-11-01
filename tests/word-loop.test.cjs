@@ -64,7 +64,7 @@ test("word order is based on learning history, not due dates or vocabulary order
   };
   vm.runInNewContext(queueCode + "\nglobalThis.build = buildWordLoopQueue;", context);
   assert.deepEqual(Array.from(context.build(3), card => card.id), ["3", "4", "5"]);
-  assert.deepEqual(Array.from(context.build(5, cards.slice(0, 3)), card => card.id), ["2", "4"]);
+  assert.deepEqual(Array.from(context.build(5, cards.slice(0, 3)), card => card.id), ["2", "3", "4"]);
 });
 
 test("legacy saves reconstruct word order using recorded study timestamps", () => {
