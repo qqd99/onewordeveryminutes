@@ -56,6 +56,8 @@ function createHarness(legacy = null, existingSlots = null) {
   const replies = [];
   const doc = {
     createElement: () => ({ value: "", textContent: "" }),
+    querySelector: () => null,
+    querySelectorAll: () => [],
     documentElement: { setAttribute() {} }
   };
   const ctx = {
@@ -86,6 +88,7 @@ function createHarness(legacy = null, existingSlots = null) {
     console: { warn() {} },
     Date, Math
   };
+  vm.runInNewContext(fs.readFileSync(path.join(root, "web/translation.js"), "utf8"), ctx);
   vm.runInNewContext(
     'const STORAGE_KEY = "vocab_srs_state_v1";\n' +
     'const SAVE_SLOTS_KEY = "vocab_srs_save_slots_v1";\n' +

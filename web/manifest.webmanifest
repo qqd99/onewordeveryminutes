@@ -1,11 +1,11 @@
 {
   "name": "Vocabulary SRS — Spaced Repetition",
   "short_name": "Vocab SRS",
-  "description": "Adaptive spaced-repetition Chinese vocabulary quiz and study app",
+  "description": "Spaced-repetition vocabulary learning with offline multilingual dictionaries",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#3b82f6",
+  "theme_color": "#355847",
   "icons": [
     {
       "src": "icons/icon16.png",

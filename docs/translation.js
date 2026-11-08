@@ -1,354 +1,186 @@
-/* Study translation helper: source is the active learning language. */
+/* Offline, directional dictionary lookup. No translation services or model output. */
 (function (root) {
   "use strict";
 
-  const LANGUAGES = Object.freeze({
-    en: "English (original)",
-    vi: "Vietnamese",
-    fr: "French",
-    es: "Spanish",
-    de: "German",
-    ja: "Japanese",
-    ko: "Korean",
-    "zh-CN": "Chinese (Simplified)",
-    th: "Thai",
-    id: "Indonesian"
-  });
-  const STORAGE_KEY = "vocab_srs_translation_cache_v1";
-  const MAX_CACHE_ENTRIES = 400;
-  const cache = new Map();
-  const pending = new Map();
+  const LANGUAGES = { en: "English", vi: "Vietnamese", es: "Spanish", "zh-CN": "Chinese (Mandarin)" };
+  let catalog = null;
+  let indexes = new Map();
   let loading = null;
-  let saveTimer = null;
+  let packCache = new WeakMap();
 
   function normalizeLanguage(language) {
-    return Object.prototype.hasOwnProperty.call(LANGUAGES, language) ? language : "en";
+    const value = String(language || "").trim().replace(/_/g, "-");
+    const names = { English: "en", Vietnamese: "vi", Spanish: "es", Chinese: "zh-CN" };
+    if (names[value]) return names[value];
+    if (/^(zh|cmn)(-|$)/i.test(value)) return "zh-CN";
+    try {
+      return Intl.getCanonicalLocales(value)[0] || "en";
+    } catch (_) {
+      return "en";
+    }
   }
 
   function sourceLanguage(pack) {
-    // translationLanguage describes the language of the *stored definitions*
-    // (English in the Chinese pack), not the language being learned.
-    const names = {
-      English: "en", Vietnamese: "vi", French: "fr", Spanish: "es",
-      German: "de", Japanese: "ja", Korean: "ko", Chinese: "zh-CN",
-      Thai: "th", Indonesian: "id"
-    };
-    const code = pack?.languageCode || pack?.speechLang;
-    if (typeof code === "string" && code.trim()) {
-      const normalized = code.trim().replace(/_/g, "-");
-      if (LANGUAGES[normalized]) return normalized;
-      const base = normalized.split("-")[0].toLowerCase();
-      if (base === "zh" || base === "cmn") return "zh-CN";
-      if (LANGUAGES[base]) return base;
+    return normalizeLanguage(pack?.languageCode || pack?.speechLang || pack?.language || "en");
+  }
+
+  function wordKey(word, language) {
+    return String(word || "").normalize("NFC").trim().toLocaleLowerCase(language);
+  }
+
+  function pairKey(source, target) {
+    return JSON.stringify([normalizeLanguage(source), normalizeLanguage(target)]);
+  }
+
+  function install(data, files) {
+    if (data?.schemaVersion !== 1 || !Array.isArray(data.pairs) || !data.languages || !data.sources) {
+      throw new Error("Unsupported dictionary catalog.");
     }
-    return names[pack?.language] || names[pack?.translationLanguage] || "en";
+    const next = new Map();
+    for (const pair of data.pairs) {
+      const index = new Map();
+      for (const name of pair.files) {
+        const file = files[name];
+        const source = data.sources[file?.sourceId];
+        if (source?.review !== "published-human-edited" || !source.url || !source.license ||
+            !Array.isArray(file?.entries)) throw new Error(`Invalid dictionary source in ${name}.`);
+        for (const entry of file.entries) {
+          if (typeof entry.headword !== "string" || !Array.isArray(entry.senses) ||
+              !entry.senses.length || entry.senses.some(sense => typeof sense.gloss !== "string" || !sense.gloss.trim())) {
+            throw new Error(`Invalid dictionary entry in ${name}.`);
+          }
+          const published = { ...entry, sourceId: file.sourceId, source };
+          for (const word of [entry.headword, ...(entry.aliases || [])]) {
+            const key = wordKey(word, pair.source);
+            if (!index.has(key)) index.set(key, []);
+            index.get(key).push(published);
+          }
+        }
+      }
+      const key = pairKey(pair.source, pair.target);
+      if (next.has(key)) throw new Error("Duplicate dictionary pair.");
+      next.set(key, index);
+    }
+    // Publish only a fully validated catalog, keeping retries safe after failure.
+    indexes = next;
+    catalog = data;
+    Object.assign(LANGUAGES, data.languages);
+    packCache = new WeakMap();
   }
 
-  function decodeEntities(text) {
-    return String(text)
-      .replace(/&#(x[\da-f]+|\d+);/gi, (entity, code) => {
-        const value = code[0].toLowerCase() === "x"
-          ? parseInt(code.slice(1), 16) : Number(code);
-        return Number.isInteger(value) && value >= 0 && value <= 0x10ffff
-          ? String.fromCodePoint(value) : entity;
-      })
-      .replace(/&(amp|quot|apos|lt|gt);/gi, (entity, name) => (
-        { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">" }[name.toLowerCase()] || entity
-      ));
-  }
-
-  async function hydrateCache() {
+  async function load() {
     if (!loading) {
       loading = (async () => {
-        try {
-          let saved = null;
-          if (typeof chrome !== "undefined" && chrome.storage?.local) {
-            saved = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY];
-          } else if (typeof localStorage !== "undefined") {
-            saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-          }
-          if (saved && typeof saved === "object" && !Array.isArray(saved)) {
-            for (const [key, value] of Object.entries(saved).slice(-MAX_CACHE_ENTRIES)) {
-              if (typeof value === "string" && !cache.has(key)) cache.set(key, value);
-            }
-          }
-        } catch (error) {
-          // Learning must work even when local storage is unavailable.
-        }
-      })();
-    }
-    await loading;
-  }
-
-  function persistCacheSoon() {
-    if (saveTimer !== null) return;
-    saveTimer = setTimeout(async () => {
-      saveTimer = null;
-      const values = Object.fromEntries(cache);
-      try {
-        if (typeof chrome !== "undefined" && chrome.storage?.local) {
-          await chrome.storage.local.set({ [STORAGE_KEY]: values });
-        } else if (typeof localStorage !== "undefined") {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(values));
-        }
-      } catch (error) {
-        // Keep the in-memory cache if persistent storage is full or disabled.
-      }
-    }, 800);
-  }
-
-  // Chrome/Edge desktop may offer an on-device Translator API. A downloaded
-  // language pack works even if both public translation APIs are blocked.
-  // Starting a new download requires a user click, never a background request.
-  const deviceTranslators = new Map();
-
-  function browserTranslator() {
-    const api = root.Translator;
-    return api && typeof api.create === "function" &&
-      typeof api.availability === "function" ? api : null;
-  }
-
-  function devicePair(source, target) {
-    return JSON.stringify([source, target]);
-  }
-
-  async function readyDeviceTranslator(source, target) {
-    const api = browserTranslator();
-    if (!api) return null;
-    const key = devicePair(source, target);
-    if (deviceTranslators.has(key)) return deviceTranslators.get(key);
-    try {
-      const options = { sourceLanguage: source, targetLanguage: target };
-      if (await api.availability(options) !== "available") return null;
-      const creating = Promise.resolve(api.create(options)).catch(error => {
-        deviceTranslators.delete(key);
+        const response = await fetch("dictionary/catalog.json");
+        if (!response.ok) throw new Error("Could not load the offline dictionary catalog.");
+        const data = await response.json();
+        const names = [...new Set(data.pairs.flatMap(pair => pair.files))];
+        const files = await Promise.all(names.map(async name => {
+          if (!/^[a-zA-Z0-9-]+\.json$/.test(name)) throw new Error("Invalid dictionary file path.");
+          const result = await fetch(`dictionary/${name}`);
+          if (!result.ok) throw new Error(`Could not load dictionary/${name}.`);
+          return [name, await result.json()];
+        }));
+        install(data, Object.fromEntries(files));
+      })().catch(error => {
+        loading = null;
         throw error;
       });
-      deviceTranslators.set(key, creating);
-      return await creating;
-    } catch (_) {
-      return null;
     }
+    return loading;
   }
 
-  async function enableOnDeviceTranslation(targetLanguage, sourceLanguage = "en", onProgress) {
-    const api = browserTranslator();
+  function targetLanguages(source) {
+    return (catalog?.pairs || []).filter(pair => normalizeLanguage(pair.source) === normalizeLanguage(source))
+      .map(pair => pair.target);
+  }
+
+  function lookup(word, targetLanguage, fromLanguage, sourceKey = "") {
+    const source = normalizeLanguage(fromLanguage);
     const target = normalizeLanguage(targetLanguage);
-    if (!api) throw new Error("On-device translation is not supported by this browser.");
-    if (target === sourceLanguage) return;
-    const key = devicePair(sourceLanguage, target);
-    if (!deviceTranslators.has(key)) {
-      // create() must be invoked synchronously inside the actual user gesture
-      // when it needs to download a new language pack.
-      let creating;
-      try {
-        creating = Promise.resolve(api.create({
-          sourceLanguage, targetLanguage: target,
-          monitor(monitor) {
-            monitor.addEventListener("downloadprogress", event => {
-              if (typeof onProgress === "function") {
-                onProgress(Math.round(event.loaded * 100));
-              }
+    const entries = indexes.get(pairKey(source, target))?.get(wordKey(word, source)) || [];
+    const matching = sourceKey ? entries.filter(entry => entry.key === sourceKey) : entries;
+    // A known source sense must match exactly. A different reading can change meaning.
+    const selected = sourceKey ? matching : entries;
+    const senses = selected.flatMap(entry => entry.senses.map(sense => ({
+      ...sense, reading: entry.reading || "", sourceId: entry.sourceId,
+      sourceName: entry.source.name, license: entry.source.license,
+      sourceUrl: entry.sourceUrl || entry.source.url
+    })));
+    return {
+      status: senses.length ? "found" : "missing", headword: String(word || ""),
+      sourceLanguage: source, targetLanguage: target, senses,
+      text: [...new Set(senses.map(sense => sense.gloss))].join("; "),
+      reading: selected[0]?.reading || ""
+    };
+  }
+
+  function localizePack(pack, targetLanguage) {
+    const target = normalizeLanguage(targetLanguage);
+    if (!packCache.has(pack)) packCache.set(pack, new Map());
+    const cached = packCache.get(pack);
+    if (cached.has(target)) return cached.get(target);
+    const source = sourceLanguage(pack);
+    const cards = pack.cards.flatMap(card => {
+      // CC-CEDICT source keys apply only to that dictionary pair.
+      const key = target === "en" && card.meaningSource?.source === "cc-cedict"
+        ? card.meaningSource.sourceKey : "";
+      const result = lookup(card.front, target, source, key);
+      if (result.status !== "found") return [];
+      const example = result.senses.flatMap(sense => sense.examples || [])[0];
+      return [{
+        ...card, meaning: result.text, reading: card.reading || result.reading,
+        speechLang: card.speechLang || pack.speechLang || source,
+        dictionaryLocalized: true, meaningLanguageCode: target, dictionarySenses: result.senses,
+        example: example ? { ...example, words: [] } : null
+      }];
+    });
+    const localized = {
+      ...pack, cards, meaningLanguageCode: target,
+      dictionaryCoverage: { covered: cards.length, total: pack.cards.length, target }
+    };
+    cached.set(target, localized);
+    return localized;
+  }
+
+  function studyPacks() {
+    return (catalog?.studyPacks || []).map(pack => {
+      const words = new Map();
+      for (const pair of catalog.pairs.filter(pair => pair.source === pack.languageCode)) {
+        for (const entries of indexes.get(pairKey(pair.source, pair.target)).values()) {
+          for (const entry of entries) {
+            const key = wordKey(entry.headword, pair.source);
+            if (!words.has(key)) words.set(key, {
+              id: `${pack.id}:${encodeURIComponent(key)}`, front: entry.headword,
+              meaning: "", reading: entry.reading || "", speechLang: pack.languageCode
             });
           }
-        })).catch(error => {
-          deviceTranslators.delete(key);
-          throw error;
-        });
-      } catch (error) {
-        throw new Error("Could not start on-device translation: " + error.message);
-      }
-      deviceTranslators.set(key, creating);
-    }
-    await deviceTranslators.get(key);
-  }
-
-  async function translateOnDevice(original, source, target) {
-    const translator = await readyDeviceTranslator(source, target);
-    if (!translator) return null;
-    try {
-      const translated = String(await translator.translate(original)).trim();
-      if (translated && translated.toLocaleLowerCase() !== original.toLocaleLowerCase()) {
-        return translated;
-      }
-    } catch (_) {
-      // The installed model may be temporarily unavailable; try online next.
-    }
-    return null;
-  }
-
-  // Prefer the same Google endpoint already used by the web app's Translate tab.
-  // MyMemory is a fallback: its anonymous quota can be exhausted independently.
-  async function requestMeaningTranslation(original, target, fromLanguage) {
-    const onDevice = await translateOnDevice(original, fromLanguage, target);
-    if (onDevice) return onDevice;
-    const providers = [
-      {
-        url: `https://translate.googleapis.com/translate_a/single?${new URLSearchParams({
-          client: "gtx", sl: fromLanguage, tl: target, dt: "t", q: original
-        })}`,
-        timeout: 5500,
-        read: data => Array.isArray(data?.[0])
-          ? data[0].map(part => (part && typeof part[0] === "string") ? part[0] : "").join("")
-          : ""
-      },
-      {
-        url: `https://api.mymemory.translated.net/get?${new URLSearchParams({
-          q: original, langpair: `${fromLanguage}|${target}`
-        })}`,
-        timeout: 6500,
-        read: data => {
-          if (Number(data?.responseStatus) !== 200) {
-            throw new Error("Translation quota reached or request rejected");
-          }
-          return data?.responseData?.translatedText || "";
         }
       }
-    ];
+      return { ...pack, speechLang: pack.languageCode, cards: [...words.values()] };
+    });
+  }
 
-    for (const provider of providers) {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), provider.timeout);
-      try {
-        const response = await fetch(provider.url, {
-          signal: controller.signal, credentials: "omit"
-        });
-        if (!response.ok) throw new Error(`Translation HTTP ${response.status}`);
-        const translated = decodeEntities(provider.read(await response.json())).trim();
-        if (!translated || /MYMEMORY WARNING/i.test(translated) ||
-            translated.toLocaleLowerCase() === original.toLocaleLowerCase()) {
-          throw new Error("No translated meaning returned");
-        }
-        return translated;
-      } catch (error) {
-        // Try the other provider before falling back to the original English.
-      } finally {
-        clearTimeout(timeout);
-      }
+  async function translateText(text, target, source = "en") {
+    return lookup(text, target, source).text;
+  }
+
+  async function localizePresentation(card, quiz, target, source, translateChoices = true, translateExample = true, vocabulary = []) {
+    if (card.dictionaryLocalized && card.meaningLanguageCode === normalizeLanguage(target)) return { card, quiz };
+    const localized = localizePack({ languageCode: source, cards: [card, ...vocabulary.filter(item => item.id !== card.id)] }, target);
+    const byId = new Map(localized.cards.map(item => [item.id, item]));
+    const result = byId.get(card.id);
+    if (!result) return { card: { ...card, meaning: "Meaning unavailable in this offline dictionary", example: null }, quiz: null };
+    if (!translateChoices || !quiz) return { card: result, quiz };
+    const choices = quiz.choices.map(choice => ({ ...choice, text: byId.get(choice.cardId)?.meaning || "" }));
+    if (choices.some(choice => !choice.text) || new Set(choices.map(choice => choice.text)).size !== choices.length) {
+      return { card: result, quiz: null };
     }
-    return original;
-  }
-
-  async function translateText(text, targetLanguage, fromLanguage = "en") {
-    const original = String(text ?? "").trim();
-    const target = normalizeLanguage(targetLanguage);
-    if (!original || target === "en" || target === fromLanguage || original.length > 450) {
-      return original;
-    }
-    await hydrateCache();
-    const key = JSON.stringify([fromLanguage, target, original]);
-    if (cache.has(key)) return cache.get(key);
-    if (pending.has(key)) return pending.get(key);
-
-    const task = (async () => {
-      try {
-        const translated = await requestMeaningTranslation(original, target, fromLanguage);
-        if (translated !== original) {
-          cache.delete(key);
-          cache.set(key, translated);
-          while (cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
-          persistCacheSoon();
-        }
-        return translated;
-      } finally {
-        pending.delete(key);
-      }
-    })();
-    pending.set(key, task);
-    return task;
-  }
-
-  async function localizePresentation(
-    card, quiz, targetLanguage, fromLanguage = "en",
-    translateChoices = true, translateExample = true, vocabulary = []
-  ) {
-    const target = normalizeLanguage(targetLanguage);
-    if (target === "en" || target === fromLanguage) return { card, quiz };
-
-    // In the Chinese pack, English meanings are only stored annotations.
-    // Translate the *Chinese word itself*, never the English annotation.
-    const directFromLearningLanguage = fromLanguage !== "en";
-    const wordById = new Map(
-      (Array.isArray(vocabulary) ? vocabulary : [])
-        .filter(item => item?.id)
-        .map(item => [item.id, item.front])
-    );
-    const choices = translateChoices && Array.isArray(quiz?.choices) ? quiz.choices : [];
-    const choiceSource = choice => {
-      if (!directFromLearningLanguage) return choice.text;
-      if (choice.cardId === card.id || choice.isCorrect || choice.id === "correct") {
-        return card.front;
-      }
-      return wordById.get(choice.cardId) || "";
-    };
-
-    const originalCardSource = directFromLearningLanguage ? card.front : card.meaning;
-    const originalExampleSource = directFromLearningLanguage
-      ? card.example?.text || "" : card.example?.meaning || "";
-    const sources = choices.map(choiceSource);
-    const [localizedChoices, localizedMeaning, localizedExample] = await Promise.all([
-      Promise.all(choices.map((choice, index) => sources[index]
-        ? translateText(sources[index], target, fromLanguage)
-        : Promise.resolve(choice.text))),
-      translateText(originalCardSource, target, fromLanguage),
-      translateExample
-        ? translateText(originalExampleSource, target, fromLanguage)
-        : (card.example?.meaning || "")
-    ]);
-
-    // A failed translation must not display Chinese text as the Vietnamese
-    // meaning or create a quiz with mixed Chinese / Vietnamese choices.
-    const validMeaning = localizedMeaning && localizedMeaning !== originalCardSource;
-    const normalizedChoices = localizedChoices.map(value =>
-      String(value || "").toLocaleLowerCase().replace(/\s+/g, "")
-    );
-    const distinct = new Set(normalizedChoices).size === normalizedChoices.length;
-    const complete = choices.every((choice, index) =>
-      sources[index] && localizedChoices[index] &&
-      localizedChoices[index] !== sources[index]
-    );
-    const translatedChoices = choices.length && complete && distinct;
-    const displayedQuiz = translatedChoices
-      ? {
-          ...quiz,
-          choices: choices.map((choice, index) => ({
-            ...choice, text: localizedChoices[index]
-          }))
-        }
-      : quiz;
-    const correctOption = translatedChoices
-      ? displayedQuiz.choices.find(choice =>
-          choice.isCorrect || choice.id === quiz.correctChoiceId
-        )
-      : null;
-
-    const translatedExample = translatedExampleAvailable(
-      localizedExample, originalExampleSource, directFromLearningLanguage,
-      card.example?.meaning || "", translateExample
-    );
-    return {
-      card: {
-        ...card,
-        meaning: choices.length && !translatedChoices
-          ? card.meaning
-          : (correctOption?.text || (validMeaning ? localizedMeaning : card.meaning)),
-        example: card.example ? {
-          ...card.example,
-          meaning: translatedExample
-        } : card.example
-      },
-      quiz: displayedQuiz
-    };
-  }
-
-  function translatedExampleAvailable(translated, source, direct, fallback, requested) {
-    if (!requested) return fallback;
-    if (translated && translated !== source) return translated;
-    return direct ? fallback : (translated || fallback);
+    return { card: result, quiz: { ...quiz, choices, correctMeaning: result.meaning } };
   }
 
   root.TranslationSupport = {
-    LANGUAGES, normalizeLanguage, sourceLanguage, translateText, localizePresentation,
-    enableOnDeviceTranslation, browserTranslator
+    LANGUAGES, normalizeLanguage, sourceLanguage, load, install, lookup,
+    targetLanguages, localizePack, studyPacks, translateText, localizePresentation
   };
 })(globalThis);

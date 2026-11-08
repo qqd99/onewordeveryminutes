@@ -139,11 +139,11 @@ test("Mode 2 displays the selected-language prompt and hides pinyin before answe
   const render = section("  function renderCard(", "  function rateCurrentCard(");
   assert.match(render, /englishToChinese \? \(card\.meaning \|\| "—"\) : card\.front/);
   const localized = section("  let visibleTranslationGeneration = 0;", "  function renderCard(");
-  assert.match(localized, /Translating meaning…/);
-  assert.match(localized, /TranslationSupport\.localizePresentation/);
+  assert.match(localized, /visibleCardMeaning = card.meaning/);
+  assert.doesNotMatch(localized, /TranslationSupport\.localizePresentation/);
   assert.match(render, /pinyinReading\.hidden = englishToChinese/);
   assert.match(render, /buildChineseQuiz/);
-  assert.match(render, /Choose the correct Chinese word/);
+  assert.match(render, /Choose the correct \$\{TranslationSupport\.LANGUAGES/);
   assert.match(render, /exampleCard\.hidden = englishToChinese/);
 });
 
@@ -261,12 +261,10 @@ test("Mode 3 pictures hide all choice meanings and example until answer", () => 
   assert.match(answer, /exampleCard\.hidden = false/);
 });
 
-test("Mode 3 reveals the chosen meaning language, including after translation completes", () => {
-  const localized = section("  async function localizeRenderedCard(", "  function renderCard(");
-  assert.match(localized, /!englishToChinese && !isPictureMode\(\)/);
-  assert.match(localized, /visibleCardMeaning = returnedMeaning/);
-  assert.match(localized, /isPictureMode\(\) \? visibleCardMeaning/);
-  assert.match(localized, /state\.quizAnswered/);
+test("Mode 3 uses the projected offline meaning before the learner answers", () => {
+  const localized = section("  async function localizeRenderedCard(", "  function revealPhotoCredits(");
+  assert.match(localized, /visibleCardMeaning = card.meaning/);
+  assert.doesNotMatch(localized, /await|translateText|fetch/);
 });
 
 
