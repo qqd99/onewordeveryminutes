@@ -10,7 +10,7 @@ Redesign the existing application in a minimalist style. Prioritize one word at 
 
 ## Primary path
 
-Choose a learning pack and meaning language, start a session, read one prompt, answer, and continue. Word list, dictionary, statistics, preferences and backups remain available through the main navigation.
+Choose learning and meaning language columns, start a session, read one prompt, answer, and continue. Word list, dictionary, statistics, preferences and backups remain available through the main navigation.
 
 ## Required states
 

@@ -280,3 +280,14 @@ test("Picture learning mode persists after saving and reloading the browser", ()
   assert.equal(restored.state.store.settings.learningMode, "chinese-to-picture");
   assert.equal(restored.els.saveSlotSelect.value, "main");
 });
+
+test("new saves retain language-column preferences and old saves remain migratable", () => {
+  const h = createHarness();
+  const normalized = h.api.normalizeSaveStore({ settings: { learningLanguage: "it", translationLanguage: "vi" }, progress: {} });
+  assert.equal(normalized.settings.learningLanguage, "it");
+  assert.equal(normalized.settings.translationLanguage, "vi");
+  const legacy = h.api.normalizeSaveStore({ settings: { activePackId: "es-dictionary" }, progress: { legacy: { remembered: 2 } } });
+  assert.equal(legacy.settings.learningLanguage, "");
+  assert.equal(legacy.settings.activePackId, "es-dictionary");
+  assert.equal(legacy.progress.legacy.remembered, 2);
+});

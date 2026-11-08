@@ -148,16 +148,19 @@ shutil.copyfile(INPUT / "spa-eng.tei", OUTPUT / "sources" / "spa-eng.tei")
 shutil.copyfile(INPUT / "GPL-2.0.txt", OUTPUT / "sources" / "GPL-2.0.txt")
 shutil.copyfile(Path(__file__), OUTPUT / "sources" / "build-dictionary.py")
 write_json("catalog.json", {
-    "schemaVersion": 1,
-    "languages": {"zh-CN": "Chinese (Mandarin)", "es": "Spanish", "en": "English", "vi": "Vietnamese"},
+    "schemaVersion": 2,
+    "languages": {"zh-CN": "Chinese (Mandarin)", "es": "Spanish", "en": "English", "vi": "Vietnamese", "it": "Italian"},
     "sources": sources,
-    "pairs": [
-        {"source": "zh-CN", "target": "en", "files": ["zh-en.json"]},
-        {"source": "zh-CN", "target": "vi", "files": ["cmn-vi.json", "zh-vi.json"]},
-        {"source": "es", "target": "en", "files": ["es-en.json", "es-en-wikdict.json"]},
-        {"source": "es", "target": "vi", "files": ["es-vi.json"]},
+    "rowFiles": ["concepts.json"],
+    "imports": [
+        {"sourceLanguage": "zh-CN", "meaningLanguage": "en", "file": "zh-en.json"},
+        {"sourceLanguage": "zh-CN", "meaningLanguage": "vi", "file": "cmn-vi.json"},
+        {"sourceLanguage": "zh-CN", "meaningLanguage": "vi", "file": "zh-vi.json"},
+        {"sourceLanguage": "es", "meaningLanguage": "en", "file": "es-en.json"},
+        {"sourceLanguage": "es", "meaningLanguage": "en", "file": "es-en-wikdict.json"},
+        {"sourceLanguage": "es", "meaningLanguage": "vi", "file": "es-vi.json"},
     ],
-    "studyPacks": [{"id": "es-dictionary", "languageCode": "es", "name": "Spanish dictionary"}],
+    "legacyStudyPacks": [{"id": "es-dictionary", "languageCode": "es", "name": "Spanish dictionary"}],
 })
 for path in OUTPUT.glob("*.json"):
     print(path.name, path.stat().st_size)

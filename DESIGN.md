@@ -17,7 +17,7 @@ Use the platform sans-serif stack for controls, body text and headings. Use nati
 
 ## Composition
 
-- A compact wordmark and labeled pack and save selectors establish context.
+- A compact wordmark and labeled learning-language, meaning-language and save selectors establish context.
 - Text navigation uses a thin active underline.
 - Main content stays within 1,000 pixels. The central study task stays within 700 pixels.
 - Use whitespace and thin separators to group content. Study and dictionary results sit directly on the page.

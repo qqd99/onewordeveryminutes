@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#355847" />
-  <link rel="stylesheet" href="style.css?v=40" />
+  <link rel="stylesheet" href="style.css?v=41" />
 </head>
 <body>
   <svg class="icon-definitions" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
@@ -33,7 +33,8 @@
 
       <div class="header-actions">
         <label class="header-field save-field"><span>Save</span><select id="quickSaveSelect" class="pack-select quick-save-select" aria-label="Switch learning save file"></select></label>
-        <label class="header-field language-field"><span>Learning</span><select id="packSelect" class="pack-select" aria-label="Select learning language and vocabulary pack"></select></label>
+        <label class="header-field language-field"><span>Learning language</span><select id="packSelect" class="pack-select" aria-label="Learning language"></select></label>
+        <label class="header-field meaning-field"><span>Meaning language</span><select id="headerMeaningLanguageSelect" class="pack-select" aria-label="Meaning language"></select></label>
         <button id="themeToggle" class="icon-button" type="button" aria-label="Toggle dark mode" title="Toggle theme">
           Dark
         </button>
@@ -241,7 +242,7 @@
       <div class="translate-container">
         <div class="translate-header">
           <h2>Dictionary</h2>
-          <p>Words, meanings and context from your offline dictionaries.</p>
+          <p>Look up words using your learning and meaning language columns.</p>
         </div>
 
         <!-- Quick Sample Chips -->
@@ -572,10 +573,10 @@
 
   <!-- Load Scripts -->
   <script src="srs.js?v=19"></script>
-  <script src="translation.js?v=39"></script>
+  <script src="translation.js?v=41"></script>
   <script src="ai-image-config.js?v=34"></script>
   <script src="picture-catalog.js?v=30"></script>
   <script src="internet-picture.js?v=34"></script>
-  <script src="app.js?v=40"></script>
+  <script src="app.js?v=41"></script>
 </body>
 </html>

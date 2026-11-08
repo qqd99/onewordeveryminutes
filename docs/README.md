@@ -2,9 +2,9 @@
 
 A modern, responsive, client-side spaced repetition (SRS) web app for learning vocabulary from selectable language packs. Built with pure HTML5, CSS3, and JavaScript — zero dependencies and zero build steps. Text and locally bundled picture quizzes work offline after the app has been cached.
 
-## Offline multilingual dictionaries in v39
+## Shared language columns in v41
 
-Chinese and Spanish learning packs use published offline dictionaries for English and Vietnamese meanings. The meaning-language selector lists installed pairs, and study cards are filtered to their coverage. The Dictionary tab provides local word and phrase lookup with source attribution. Historical translation sections below describe earlier releases. See [coverage, licensing, source hashes and adding language pairs](dictionary/README.md).
+Choose learning and meaning languages directly. Shared concept rows provide Italian, English, Spanish, Vietnamese and Chinese cells. Published bilingual sources supplement the rows through a sparse import adapter. The study screen retains its minimalist one-word layout. Coverage is filtered to populated cells, saved progress remains language-specific, and historical translation sections below describe earlier releases. See [coverage, licensing, source hashes and adding language pairs](dictionary/README.md).
 
 ---
 
