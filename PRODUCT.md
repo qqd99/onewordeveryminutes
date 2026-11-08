@@ -16,8 +16,9 @@ Vocabulary SRS combines word study, spaced repetition, pronunciation and an offl
 
 ## Capabilities and Constraints
 
-- Chinese and Spanish learning packs offer English and Vietnamese meanings from published human-edited dictionaries.
-- Coverage differs by dictionary pair. Missing entries are disclosed and excluded from study.
+- Learning and meaning selectors choose language columns from shared, concept-aligned vocabulary rows.
+- Italian, English, Spanish and Vietnamese have 1,310 aligned concept rows, with 570 corresponding Chinese cells. Published dictionaries supplement the rows.
+- Coverage differs by populated column combination. Missing cells are disclosed and excluded from study.
 - Progress, preferences and independent save slots persist in the browser and support JSON backups.
 - Study supports word-to-meaning, meaning-to-word and picture quiz directions, with audio and recent-word loops.
 - The site uses HTML, CSS and vanilla JavaScript. Both publication directories must match byte for byte.
@@ -25,7 +26,7 @@ Vocabulary SRS combines word study, spaced repetition, pronunciation and an offl
 
 ## Brand Commitments
 
-The user requested a minimalist redesign and selected a focus on one word at a time, with review tools placed below the main task.
+The user requested a minimalist redesign and selected a focus on one word at a time, with review tools placed below the main task. The user confirmed a shared spreadsheet-like data model while retaining the study screen.
 
 ## Product Principles
 

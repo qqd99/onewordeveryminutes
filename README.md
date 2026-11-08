@@ -1,6 +1,6 @@
 # Vocabulary SRS — Web App
 
-A browser-based vocabulary spaced-repetition app with Chinese and Spanish learning packs and offline English or Vietnamese meanings. No browser extension or plugin is required.
+A browser-based vocabulary spaced-repetition app with shared language columns and published offline vocabulary. No browser extension or plugin is required.
 
 **Live site:** https://qqd99.github.io/onewordeveryminutes/
 
@@ -19,7 +19,7 @@ The web app is HTML, CSS, and vanilla JavaScript with no build-time dependencies
 
 ## Offline multilingual dictionary
 
-Choose the learning language in the vocabulary selector and the meaning language in Settings. Published, human-edited dictionary entries supply meanings offline. Coverage varies by pair. The dictionary format supports additional languages through attributed data files. See [dictionary coverage, sources and extension instructions](web/dictionary/README.md).
+Choose the learning language and meaning language above the study screen. Shared concept rows have Italian, English, Spanish, Vietnamese and Chinese cells. Published human-edited dictionaries supplement those rows. Add future languages through cells in the same data model. Coverage varies by column combination. See [dictionary coverage, sources and extension instructions](web/dictionary/README.md).
 
 ## Developing locally
 

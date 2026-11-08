@@ -24,6 +24,7 @@
       settings: {
         theme: "light",
         activePackId: "zh-hsk-core-1000",
+        learningLanguage: "",
         intervalHours: 0,
         intervalMinutes: 15,
         intervalSeconds: 0,
@@ -164,6 +165,7 @@
     reminderEnabled: $("#reminderEnabled"),
     learningModeSelect: $("#learningModeSelect"),
     meaningLanguageSelect: $("#meaningLanguageSelect"),
+    headerMeaningLanguageSelect: $("#headerMeaningLanguageSelect"),
     translationPromptStatus: $("#translationPromptStatus"),
     translationPromptMessage: $("#translationPromptMessage"),
     retryMeaningTranslationBtn: $("#retryMeaningTranslationBtn"),
@@ -264,6 +266,8 @@
     if (!["chinese-to-english", "english-to-chinese", "chinese-to-picture"].includes(normalized.settings.learningMode)) {
       normalized.settings.learningMode = "chinese-to-english";
     }
+    normalized.settings.learningLanguage = typeof settings.learningLanguage === "string" && settings.learningLanguage
+      ? TranslationSupport.normalizeLanguage(settings.learningLanguage) : "";
     normalized.settings.translationLanguage = typeof TranslationSupport !== "undefined"
       ? TranslationSupport.normalizeLanguage(normalized.settings.translationLanguage)
       : (["en", "vi", "fr", "es", "de", "ja", "ko", "zh-CN", "th", "id"]
@@ -392,7 +396,7 @@
 
   function syncMeaningLanguageControls() {
     const target = state.store.settings.translationLanguage || "en";
-    for (const control of [els.meaningLanguageSelect, els.translateTargetSelect]) {
+    for (const control of [els.meaningLanguageSelect, els.translateTargetSelect, els.headerMeaningLanguageSelect]) {
       if (!control) continue;
       const targets = TranslationSupport.targetLanguages(TranslationSupport.sourceLanguage(state.activePack));
       if (targets.length) {
@@ -412,12 +416,18 @@
     if (!state.catalog) return;
     const original = state.catalog.packs.find(pack => pack.id === state.store.settings.activePackId)
       || state.catalog.packs[0];
-    const source = TranslationSupport.sourceLanguage(original);
+    const requested = state.store.settings.learningLanguage || TranslationSupport.sourceLanguage(original);
+    const availableLanguages = TranslationSupport.learningLanguages();
+    const source = availableLanguages.includes(requested)
+      ? requested : availableLanguages[0] || TranslationSupport.sourceLanguage(original);
+    state.store.settings.learningLanguage = source;
     const targets = TranslationSupport.targetLanguages(source);
     if (!targets.includes(state.store.settings.translationLanguage)) {
-      state.store.settings.translationLanguage = targets[0] || "en";
+      state.store.settings.translationLanguage = targets.includes("en") ? "en" : targets[0] || "en";
     }
-    state.activePack = TranslationSupport.localizePack(original, state.store.settings.translationLanguage);
+    state.activePack = TranslationSupport.learningPack(source, state.store.settings.translationLanguage);
+    state.store.settings.activePackId = state.activePack.id;
+    if (els.packSelect) els.packSelect.value = source;
     syncMeaningLanguageControls();
     const coverage = state.activePack.dictionaryCoverage;
     const info = document.querySelector("#dictionaryCoverage");
@@ -427,9 +437,9 @@
       const labels = [`Mode 1 · ${name} → meaning`, `Mode 2 · meaning → ${name}`, `Mode 3 · ${name} → picture`];
       [...els.learningModeSelect.options].forEach((option, index) => { option.textContent = labels[index]; });
     }
-    const samples = { "zh-CN": ["你好", "学习", "词典", "水"], es: ["hola", "casa", "aprender", "agua"] }[source];
+    const samples = state.activePack.cards.slice(0, 4).map(card => card.front);
     document.querySelectorAll(".sample-chip").forEach((chip, index) => {
-      chip.hidden = !samples;
+      chip.hidden = !samples[index];
       chip.dataset.sample = samples?.[index] || "";
       chip.textContent = samples?.[index] || "";
     });
@@ -437,6 +447,7 @@
   }
 
   function changeMeaningLanguage(target) {
+    const previousCardId = state.currentCard?.id;
     if (wordLoopState.active) stopWordLoop({ silent: true });
     stopAudio();
     ++translationGeneration;
@@ -452,8 +463,11 @@
     updateDashboardCounts();
     renderDeckList();
     updateWordLoopPreview();
-    if (state.learningStatus === "active") presentNextCard({ autoPlay: false });
-    else updateLearningSessionUi();
+    if (state.learningStatus === "active") {
+      const previous = state.activePack.cards.find(card => card.id === previousCardId);
+      if (previous && isModeEligibleCard(previous)) renderCard(previous, { autoPlay: false });
+      else presentNextCard({ autoPlay: false });
+    } else updateLearningSessionUi();
   }
 
   function syncActiveSaveToPage() {
@@ -486,7 +500,7 @@
 
     if (state.catalog?.packs?.length) {
       applyDictionaryLanguage();
-      if (els.packSelect) els.packSelect.value = state.activePack.id;
+      if (els.packSelect) els.packSelect.value = state.store.settings.learningLanguage;
       updateDashboardCounts();
       renderDeckList();
     }
@@ -624,9 +638,10 @@
         if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
           throw new Error("No valid progress data found.");
         }
-        const validIds = new Set((state.catalog?.packs || []).flatMap(pack =>
-          pack.cards.map(card => card.id)
-        ));
+        const validIds = new Set([
+          ...(state.catalog?.packs || []).flatMap(pack => pack.cards.map(card => card.id)),
+          ...TranslationSupport.knownCardIds()
+        ]);
         const progress = {};
         for (const [id, value] of Object.entries(raw)) {
           if (validIds.has(id) && value && typeof value === "object" && !Array.isArray(value)) {
@@ -642,6 +657,8 @@
         const importedStore = normalizeSaveStore({
           settings: {
             ...state.store.settings, ...safeSettings,
+            learningLanguage: safeSettings.learningLanguage ||
+              (safeSettings.activePackId ? "" : state.store.settings.learningLanguage),
             readWords: typeof safeSettings.readWords === "boolean" ? safeSettings.readWords
               : typeof safeSettings.autoSpeak === "boolean" ? safeSettings.autoSpeak
               : state.store.settings.readWords
@@ -1140,9 +1157,16 @@
     // meaning alone is insufficient because multiple words may share it.
     const distractorsByMeaning = new Map();
 
-    const candidates = vocabulary.filter(w =>
-      w.id !== card.id && String(w.meaning || "").trim() &&
-      String(w.meaning).trim() !== correctMeaning
+    const equivalentCards = vocabulary.filter(item =>
+      item.id === card.id || (card.front && item.front === card.front)
+    );
+    const acceptedMeanings = new Set([correctMeaning, ...equivalentCards.map(item => String(item.meaning || "").trim())]);
+    const acceptedRows = new Set(equivalentCards.flatMap(item => item.dictionarySenses || [])
+      .map(sense => sense.rowId).filter(Boolean));
+    const candidates = vocabulary.filter(item =>
+      item.id !== card.id && String(item.meaning || "").trim() &&
+      !acceptedMeanings.has(String(item.meaning).trim()) &&
+      !(item.dictionarySenses || []).some(sense => acceptedRows.has(sense.rowId))
     );
     // Fisher-Yates avoids the biased comparator used in Array.sort.
     const shuffled = [...candidates];
@@ -1948,7 +1972,7 @@
     const pictureMode = isPictureMode();
     els.hanziTerm.textContent = englishToChinese ? (card.meaning || "—") : card.front;
     els.hanziTerm.classList.toggle("english-prompt", englishToChinese);
-    els.pinyinReading.hidden = englishToChinese;
+    els.pinyinReading.hidden = englishToChinese || !card.reading;
     els.pinyinReading.textContent = englishToChinese ? "" : (card.reading || "—");
 
     // Quiz Section
@@ -2940,9 +2964,10 @@
           throw new Error("Invalid progress backup format.");
         }
 
-        const validIds = new Set((state.catalog?.packs || []).flatMap(pack =>
-          pack.cards.map(card => card.id)
-        ));
+        const validIds = new Set([
+          ...(state.catalog?.packs || []).flatMap(pack => pack.cards.map(card => card.id)),
+          ...TranslationSupport.knownCardIds()
+        ]);
         let count = 0;
         for (const [id, val] of Object.entries(importedProgress)) {
           if (!validIds.has(id) || !val || typeof val !== "object" ||
@@ -2960,9 +2985,18 @@
         // validated known fields, keeping reminder/notification permissions
         // local to this browser.
         const importedSettings = imported.settings || imported.payload?.settings;
+        const restoresColumns = typeof importedSettings?.learningLanguage === "string" ||
+          typeof importedSettings?.translationLanguage === "string";
         if (importedSettings && typeof importedSettings === "object" &&
             !Array.isArray(importedSettings)) {
           // Support both new and old backups; the switches remain independent.
+          const importedLanguage = TranslationSupport.normalizeLanguage(importedSettings.learningLanguage);
+          if (TranslationSupport.learningLanguages().includes(importedLanguage) && importedSettings.learningLanguage) {
+            state.store.settings.learningLanguage = importedLanguage;
+          }
+          if (importedSettings.translationLanguage) {
+            state.store.settings.translationLanguage = TranslationSupport.normalizeLanguage(importedSettings.translationLanguage);
+          }
           const importedReadWords = typeof importedSettings.readWords === "boolean"
             ? importedSettings.readWords : importedSettings.autoSpeak;
           if (typeof importedReadWords === "boolean") {
@@ -3001,6 +3035,11 @@
           els.speedLabel.textContent = `${state.store.settings.speed}x`;
           els.wordRepeatCount.value = state.store.settings.wordRepeat;
           els.wordRepeatLabel.textContent = state.store.settings.wordRepeat;
+        }
+        if (restoresColumns) {
+          resetLearningForSaveSwitch();
+          applyDictionaryLanguage();
+          updateLearningSessionUi();
         }
         saveStoredState();
         updateDashboardCounts();
@@ -3205,46 +3244,28 @@
       const data = await expandVocabularyCatalog(await response.json());
       await TranslationSupport.load();
       data.packs.push(...TranslationSupport.studyPacks());
+      TranslationSupport.bindVocabulary(data.packs);
       state.catalog = data;
 
-      // Populate pack selector
       els.packSelect.innerHTML = "";
-      data.packs.forEach(pack => {
+      TranslationSupport.learningLanguages().forEach(language => {
         const option = document.createElement("option");
-        option.value = pack.id;
-        option.textContent = pack.name;
+        option.value = language;
+        option.textContent = TranslationSupport.LANGUAGES[language] || language;
         els.packSelect.appendChild(option);
       });
-
-      const activePackId = state.store.settings.activePackId || data.defaultPackId || data.packs[0].id;
-      els.packSelect.value = activePackId;
-      state.store.settings.activePackId = activePackId;
       applyDictionaryLanguage();
-      els.packSelect.value = state.activePack.id;
+      saveStoredState();
 
-      els.packSelect.addEventListener("change", (e) => {
-        const nextPack = data.packs.find(p => p.id === e.target.value);
-        if (nextPack) {
-          if (typeof wordLoopState !== "undefined" && wordLoopState.active) stopWordLoop({ silent: true });
-          stopAudio();
-          ++visibleTranslationGeneration;
-          ++translationGeneration;
-          state.store.settings.activePackId = nextPack.id;
-          applyDictionaryLanguage();
-          els.translateResult.hidden = true;
-          state.currentCard = null;
-          state.currentQuiz = null;
-          state.store.currentCardId = null;
-          saveStoredState();
-          updateDashboardCounts();
-          renderDeckList();
-          updateWordLoopPreview();
-          if (state.learningStatus === "active") {
-            presentNextCard({ autoPlay: false });
-          } else {
-            updateLearningSessionUi();
-          }
-        }
+      els.packSelect.addEventListener("change", event => {
+        if (!TranslationSupport.learningLanguages().includes(event.target.value)) return;
+        state.store.settings.learningLanguage = event.target.value;
+        state.store.currentCardId = null;
+        changeMeaningLanguage(state.store.settings.translationLanguage);
+      });
+      els.headerMeaningLanguageSelect?.addEventListener("change", event => {
+        changeMeaningLanguage(event.target.value);
+        if (els.translateInput.value.trim()) executeTranslation();
       });
 
       // Every page visit begins intentionally idle. Starting is a user gesture,
