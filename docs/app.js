@@ -167,9 +167,6 @@
     translationPromptStatus: $("#translationPromptStatus"),
     translationPromptMessage: $("#translationPromptMessage"),
     retryMeaningTranslationBtn: $("#retryMeaningTranslationBtn"),
-    onDeviceTranslationRow: $("#onDeviceTranslationRow"),
-    onDeviceTranslationStatus: $("#onDeviceTranslationStatus"),
-    enableOnDeviceTranslationBtn: $("#enableOnDeviceTranslationBtn"),
     intervalHoursInput: $("#intervalHoursInput"),
     intervalMinutesInput: $("#intervalMinutesInput"),
     intervalSecondsInput: $("#intervalSecondsInput"),
@@ -393,17 +390,76 @@
     state.selectedChoiceId = null;
   }
 
-  // Apply the persisted preference to both dropdowns, including on a fresh load.
   function syncMeaningLanguageControls() {
     const target = state.store.settings.translationLanguage || "en";
-    if (els.meaningLanguageSelect) els.meaningLanguageSelect.value = target;
-    if (els.translateTargetSelect) els.translateTargetSelect.value = target;
+    for (const control of [els.meaningLanguageSelect, els.translateTargetSelect]) {
+      if (!control) continue;
+      const targets = TranslationSupport.targetLanguages(TranslationSupport.sourceLanguage(state.activePack));
+      if (targets.length) {
+        control.innerHTML = "";
+        for (const code of targets) {
+          const option = document.createElement("option");
+          option.value = code;
+          option.textContent = TranslationSupport.LANGUAGES[code] || code;
+          control.appendChild(option);
+        }
+      }
+      control.value = target;
+    }
+  }
+
+  function applyDictionaryLanguage() {
+    if (!state.catalog) return;
+    const original = state.catalog.packs.find(pack => pack.id === state.store.settings.activePackId)
+      || state.catalog.packs[0];
+    const source = TranslationSupport.sourceLanguage(original);
+    const targets = TranslationSupport.targetLanguages(source);
+    if (!targets.includes(state.store.settings.translationLanguage)) {
+      state.store.settings.translationLanguage = targets[0] || "en";
+    }
+    state.activePack = TranslationSupport.localizePack(original, state.store.settings.translationLanguage);
+    syncMeaningLanguageControls();
+    const coverage = state.activePack.dictionaryCoverage;
+    const info = document.querySelector("#dictionaryCoverage");
+    if (info) info.textContent = `${coverage.covered.toLocaleString()} of ${coverage.total.toLocaleString()} words covered · ${TranslationSupport.LANGUAGES[source] || source} → ${TranslationSupport.LANGUAGES[coverage.target] || coverage.target} · Published human-edited dictionaries`;
+    if (els.learningModeSelect) {
+      const name = TranslationSupport.LANGUAGES[source] || source;
+      const labels = [`Mode 1 · ${name} → meaning`, `Mode 2 · meaning → ${name}`, `Mode 3 · ${name} → picture`];
+      [...els.learningModeSelect.options].forEach((option, index) => { option.textContent = labels[index]; });
+    }
+    const samples = { "zh-CN": ["你好", "学习", "词典", "水"], es: ["hola", "casa", "aprender", "agua"] }[source];
+    document.querySelectorAll(".sample-chip").forEach((chip, index) => {
+      chip.hidden = !samples;
+      chip.dataset.sample = samples?.[index] || "";
+      chip.textContent = samples?.[index] || "";
+    });
+    loadVoices();
+  }
+
+  function changeMeaningLanguage(target) {
+    if (wordLoopState.active) stopWordLoop({ silent: true });
+    stopAudio();
+    ++translationGeneration;
+    ++visibleTranslationGeneration;
+    state.store.settings.translationLanguage = TranslationSupport.normalizeLanguage(target);
+    applyDictionaryLanguage();
+    els.translateResult.hidden = true;
+    state.currentCard = null;
+    state.currentQuiz = null;
+    state.currentReviewBaseline = null;
+    state.quizAnswered = false;
+    saveStoredState();
+    updateDashboardCounts();
+    renderDeckList();
+    updateWordLoopPreview();
+    if (state.learningStatus === "active") presentNextCard({ autoPlay: false });
+    else updateLearningSessionUi();
   }
 
   function syncActiveSaveToPage() {
     const settings = state.store.settings;
     document.documentElement.setAttribute("data-theme", settings.theme || "light");
-    els.themeToggle.textContent = settings.theme === "dark" ? "☀️" : "🌙";
+    els.themeToggle.textContent = settings.theme === "dark" ? "Light" : "Dark";
     if (els.learningModeSelect) els.learningModeSelect.value = settings.learningMode;
     syncMeaningLanguageControls();
     if (els.reminderEnabled) els.reminderEnabled.checked = Boolean(settings.reminderEnabled);
@@ -429,9 +485,7 @@
     loadVoices();
 
     if (state.catalog?.packs?.length) {
-      state.activePack = state.catalog.packs.find(pack =>
-        pack.id === settings.activePackId
-      ) || state.catalog.packs[0];
+      applyDictionaryLanguage();
       if (els.packSelect) els.packSelect.value = state.activePack.id;
       updateDashboardCounts();
       renderDeckList();
@@ -617,7 +671,7 @@
   function applyTheme(theme) {
     state.store.settings.theme = theme;
     document.documentElement.setAttribute("data-theme", theme);
-    els.themeToggle.textContent = theme === "dark" ? "☀️" : "🌙";
+    els.themeToggle.textContent = theme === "dark" ? "Light" : "Dark";
     saveStoredState();
   }
 
@@ -695,10 +749,11 @@
       els.voiceSelect.innerHTML = "";
       const defaultOpt = document.createElement("option");
       defaultOpt.value = "";
-      defaultOpt.textContent = "Auto-detect Chinese voice";
+      defaultOpt.textContent = "Auto-detect learning-language voice";
       els.voiceSelect.appendChild(defaultOpt);
 
-      const zhVoices = (voices || []).filter(v => /^zh|cmn|chinese/i.test(v.lang) || /^zh|chinese/i.test(v.name));
+      const language = TranslationSupport.sourceLanguage(state.activePack).split("-")[0];
+      const zhVoices = (voices || []).filter(v => v.lang.toLowerCase().split("-")[0] === language);
       for (const v of zhVoices) {
         const opt = document.createElement("option");
         opt.value = v.name;
@@ -1272,23 +1327,8 @@
   }
 
   async function updateWordLoopCurrentMeaning(card, generation) {
-    const fallback = card.meaning || "Meaning unavailable";
-    const target = TranslationSupport.normalizeLanguage(state.store.settings.translationLanguage);
-    if (target === "en") return;
-
-    try {
-      const localized = await TranslationSupport.localizePresentation(
-        card, null, target, TranslationSupport.sourceLanguage(state.activePack),
-        false, false, state.activePack?.cards || []
-      );
-      if (generation !== wordLoopMeaningGeneration) return;
-      if (els.wordLoopCurrentMeaning) {
-        els.wordLoopCurrentMeaning.textContent = localized?.card?.meaning || fallback;
-      }
-    } catch (error) {
-      if (generation === wordLoopMeaningGeneration && els.wordLoopCurrentMeaning) {
-        els.wordLoopCurrentMeaning.textContent = fallback;
-      }
+    if (generation === wordLoopMeaningGeneration && els.wordLoopCurrentMeaning) {
+      els.wordLoopCurrentMeaning.textContent = card.meaning || "Meaning unavailable";
     }
   }
 
@@ -1541,7 +1581,7 @@
       if (els.learningSessionTitle) els.learningSessionTitle.textContent = "Ready to learn?";
       if (els.learningSessionText) {
         els.learningSessionText.textContent = state.activePack
-          ? "Press Start learning to show the first card and begin automatic pronunciation."
+          ? "Start a session to study one word at a time."
           : "Loading vocabulary…";
       }
       if (els.timerStatusText) els.timerStatusText.textContent = "Learning not started";
@@ -1569,7 +1609,7 @@
     const card = getStartingCard();
     if (!card) {
       state.learningStatus = "idle";
-      showToast("This pack needs at least three distinct illustrated words for Picture mode.");
+      showToast("No covered words are eligible for this quiz mode. Choose another direction or dictionary pair.");
       updateLearningSessionUi();
       return;
     }
@@ -1647,68 +1687,12 @@
   }
 
   async function localizeRenderedCard(card, quiz, englishToChinese) {
-    const generation = ++visibleTranslationGeneration;
-    const target = TranslationSupport.normalizeLanguage(state.store.settings.translationLanguage);
+    ++visibleTranslationGeneration;
     if (!card || !quiz) return;
-
-    visibleCardMeaning = card.meaning || "—";
+    visibleCardMeaning = card.meaning || "Meaning unavailable";
     showMeaningTranslationStatus("");
-    if (englishToChinese) {
-      els.hanziTerm.textContent = target === "en"
-        ? visibleCardMeaning : "Translating meaning…";
-    }
-    else if (!isPictureMode()) for (const choice of quiz.choices) {
-      const button = [...els.choicesGrid.querySelectorAll(".choice-btn")]
-        .find(element => element.dataset.choiceId === choice.id);
-      if (button?.firstElementChild) button.firstElementChild.textContent = choice.text;
-    }
+    if (englishToChinese) els.hanziTerm.textContent = visibleCardMeaning;
     els.exampleEnglish.textContent = card.example?.meaning || "";
-    if (state.quizAnswered) {
-      const reading = card.reading ? ` · ${card.reading}` : "";
-      els.revealedMeaning.textContent = englishToChinese
-        ? `Answer: ${card.front}${reading} — ${card.meaning}`
-        : `Meaning: ${isPictureMode() ? visibleCardMeaning : quiz.correctMeaning}`;
-    }
-    if (target === "en") return;
-
-    let localized;
-    try {
-      localized = await TranslationSupport.localizePresentation(
-        card, quiz, target,
-        TranslationSupport.sourceLanguage(state.activePack),
-        !englishToChinese && !isPictureMode(), !englishToChinese,
-        state.activePack?.cards || []
-      );
-    } catch (error) {
-      console.warn("Could not translate the vocabulary meaning:", error);
-      localized = { card, quiz };
-    }
-    if (generation !== visibleTranslationGeneration || state.currentCard !== card ||
-        state.currentQuiz !== quiz || state.store.settings.translationLanguage !== target) return;
-
-    const returnedMeaning = localized.card.meaning || card.meaning || "—";
-    visibleCardMeaning = returnedMeaning;
-    if (englishToChinese) {
-      els.hanziTerm.textContent = visibleCardMeaning;
-      if (returnedMeaning === card.meaning) {
-        showMeaningTranslationStatus("Direct translation unavailable. Showing the original English definition.", true);
-      }
-    }
-    else if (!isPictureMode()) for (const choice of localized.quiz.choices) {
-      const button = [...els.choicesGrid.querySelectorAll(".choice-btn")]
-        .find(element => element.dataset.choiceId === choice.id);
-      if (button?.firstElementChild) button.firstElementChild.textContent = choice.text;
-    }
-    if (isPictureMode() && returnedMeaning === card.meaning) {
-      showMeaningTranslationStatus("Translation unavailable. Showing the original English meaning.", true);
-    }
-    els.exampleEnglish.textContent = localized.card.example?.meaning || "";
-    if (state.quizAnswered) {
-      const reading = card.reading ? ` · ${card.reading}` : "";
-      els.revealedMeaning.textContent = englishToChinese
-        ? `Answer: ${card.front}${reading} — ${visibleCardMeaning}`
-        : `Meaning: ${localized.card.meaning}`;
-    }
   }
 
   function revealPhotoCredits(quiz) {
@@ -1985,7 +1969,7 @@
     if (els.photoCredits) { els.photoCredits.hidden = true; els.photoCredits.innerHTML = ""; }
     if (els.photoRetryBtn) els.photoRetryBtn.hidden = true;
     els.quizPrompt.textContent = englishToChinese
-      ? "Choose the correct Chinese word:"
+      ? `Choose the correct ${TranslationSupport.LANGUAGES[TranslationSupport.sourceLanguage(state.activePack)] || "learning-language"} word`
       : pictureMode ? "Choose the matching picture:" : "Choose the correct meaning:";
 
     state.currentQuiz.choices.forEach((choice, index) => {
@@ -2036,7 +2020,7 @@
       els.examplePinyin.textContent = card.example.reading || "";
       els.exampleEnglish.textContent = card.example.meaning || "";
 
-      // Render divided words with English translation & Google Translate links
+      // Render the selected dictionary language for each example word.
       const words = card.example.words || extractWordsFallback(card.example.text, state.activePack?.cards || []);
       if (words && words.length > 0) {
         els.exampleBreakdown.hidden = false;
@@ -2044,10 +2028,10 @@
         words.forEach(item => {
           const a = document.createElement("a");
           a.className = "word-chip";
-          a.href = `https://translate.google.com/?sl=${encodeURIComponent(TranslationSupport.sourceLanguage(state.activePack))}&tl=${encodeURIComponent(state.store.settings.translationLanguage || "en")}&text=${encodeURIComponent(item.word)}&op=translate`;
+          a.removeAttribute("href");
           a.target = "_blank";
           a.rel = "noopener noreferrer";
-          a.title = `Translate "${item.word}" with Google Translate`;
+          a.title = item.meaning || "No published dictionary meaning";
 
           const wordSpan = document.createElement("span");
           wordSpan.className = "chip-word";
@@ -2184,7 +2168,11 @@
     state.store.lastCardId = state.currentCard ? state.currentCard.id : null;
     const studyCards = getModeEligibleVocabulary(state.activePack.cards);
     if (!studyCards.length) {
-      showToast("No cards can provide three same-length Chinese choices in this mode.");
+      state.currentCard = null;
+      state.currentQuiz = null;
+      state.learningStatus = "idle";
+      updateLearningSessionUi();
+      showToast("This dictionary pair has no cards eligible for the selected quiz mode.");
       return;
     }
     const nextCard = chooseNextCard(
@@ -2311,8 +2299,8 @@
     els.statsLapses.textContent = totalLapses;
 
     // Progress Bar
-    const masteredPct = Math.round((masteredCount / total) * 100);
-    const learningPct = Math.round(((reviewedCount - masteredCount) / total) * 100);
+    const masteredPct = Math.round((masteredCount / (total || 1)) * 100);
+    const learningPct = Math.round(((reviewedCount - masteredCount) / (total || 1)) * 100);
     const newPct = Math.max(0, 100 - masteredPct - learningPct);
 
     els.progressPercentText.textContent = `${masteredPct}% mastered (${masteredCount} of ${total})`;
@@ -2374,8 +2362,10 @@
       const row = document.createElement("div");
       row.className = "word-row-card";
 
-      const mainInfo = document.createElement("div");
+      const mainInfo = document.createElement("button");
+      mainInfo.type = "button";
       mainInfo.className = "word-main-info";
+      mainInfo.setAttribute("aria-label", `Study ${card.front}`);
 
       const hanzi = document.createElement("div");
       hanzi.className = "word-hanzi";
@@ -2416,7 +2406,8 @@
       const speakBtn = document.createElement("button");
       speakBtn.className = "icon-button";
       speakBtn.type = "button";
-      speakBtn.textContent = "🔊";
+      speakBtn.innerHTML = '<svg class="ui-icon" aria-hidden="true"><use href="#icon-sound"></use></svg>';
+      speakBtn.setAttribute("aria-label", `Pronounce ${card.front}`);
       speakBtn.title = "Pronounce word";
       speakBtn.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -2438,7 +2429,7 @@
           return;
         }
         if (!isModeEligibleCard(card)) {
-          showToast("Mode 2 needs two other Chinese answers with the same character count.");
+          showToast("Mode 2 needs two other words with the same character count.");
           return;
         }
         renderCard(card, { autoPlay: false });
@@ -2562,246 +2553,70 @@
   /* -------------------------------------------------------------
      8B. TRANSLATE & WORD BREAKDOWN SECTION
   ------------------------------------------------------------- */
-  const translationCache = new Map();
   let translateDebounceTimer = null;
   let translationGeneration = 0;
 
-  async function fetchGoogleTranslate(text, target = "en") {
-    const trimmed = text.trim();
-    if (!trimmed) return null;
+  function segmentLearningText(text) {
     const source = TranslationSupport.sourceLanguage(state.activePack);
-    const cacheKey = `${source}|${target}|${trimmed}`;
-    if (translationCache.has(cacheKey)) {
-      return translationCache.get(cacheKey);
+    if (typeof Intl.Segmenter === "function") {
+      return [...new Intl.Segmenter(source, { granularity: "word" }).segment(text)]
+        .filter(item => item.isWordLike).map(item => item.segment);
     }
-
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(source)}&tl=${encodeURIComponent(target)}&dt=t&dt=rm&dt=bd&q=${encodeURIComponent(trimmed)}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
-    let response;
-    try {
-      response = await fetch(url, { signal: controller.signal });
-    } finally {
-      clearTimeout(timeout);
-    }
-    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-    const data = await response.json();
-
-    let translation = "";
-    if (Array.isArray(data[0])) {
-      translation = data[0]
-        .filter(item => item && item[0])
-        .map(item => item[0])
-        .join("");
-    }
-
-    let pinyin = "";
-    if (Array.isArray(data[0])) {
-      for (const item of data[0]) {
-        if (item && item.length >= 4 && typeof item[3] === "string" && item[3]) {
-          pinyin = item[3];
-          break;
-        }
-      }
-    }
-
-    const result = { translation, pinyin };
-    translationCache.set(cacheKey, result);
-    return result;
-  }
-
-  async function translateLearningWord(word, target, englishFallback = "") {
-    const source = TranslationSupport.sourceLanguage(state.activePack);
-    const translated = await TranslationSupport.translateText(word, target, source);
-    return translated && translated !== word ? translated : englishFallback;
-  }
-
-  function segmentChineseText(text) {
-    if (!text) return [];
-    if (typeof Intl !== "undefined" && Intl.Segmenter) {
-      try {
-        const segmenter = new Intl.Segmenter("zh-CN", { granularity: "word" });
-        const raw = Array.from(segmenter.segment(text))
-          .filter(s => s.isWordLike && s.segment.trim().length > 0)
-          .map(s => s.segment.trim());
-        if (raw.length > 0) return raw;
-      } catch (err) {
-        console.warn("Intl.Segmenter error:", err);
-      }
-    }
-    const fallbackList = extractWordsFallback(text, state.activePack?.cards || []);
-    return fallbackList.map(item => item.word);
+    if (source === "zh-CN") return extractWordsFallback(text, state.activePack?.cards || []).map(item => item.word);
+    return text.match(/[\p{L}\p{M}]+(?:['’’-][\p{L}\p{M}]+)*/gu) || [];
   }
 
   async function executeTranslation() {
     const requestId = ++translationGeneration;
-    const target = TranslationSupport.normalizeLanguage(state.store.settings.translationLanguage);
     const text = els.translateInput.value.trim();
     if (!text) {
       els.translateResult.hidden = true;
       els.translateStatusIndicator.textContent = "";
       return;
     }
-
-    els.translateStatusIndicator.textContent = "Translating…";
-    els.translateBtn.disabled = true;
-
-    try {
-      let fullTrans = { translation: "", pinyin: "" };
-      try {
-        fullTrans = await fetchGoogleTranslate(text, target);
-      } catch (err) {
-        console.warn("Google translate API error:", err);
-        fullTrans = { translation: "(Offline / Translation unavailable)", pinyin: "" };
+    const target = state.store.settings.translationLanguage;
+    const source = TranslationSupport.sourceLanguage(state.activePack);
+    const result = TranslationSupport.lookup(text, target, source);
+    const words = result.status === "found" ? [text] : [...new Set(segmentLearningText(text))];
+    const details = words.map(word => TranslationSupport.lookup(word, target, source));
+    if (requestId !== translationGeneration) return;
+    els.resultChinese.textContent = text;
+    els.resultPinyin.textContent = result.reading;
+    els.resultPinyin.hidden = !result.reading;
+    els.resultEnglish.textContent = result.text || "No published entry for this text in the installed dictionary. See individual words below.";
+    els.translateWordsGrid.innerHTML = "";
+    for (const item of details) {
+      const container = document.createElement("div");
+      container.className = "breakdown-word-card";
+      const heading = document.createElement("div");
+      heading.className = "card-word-text";
+      heading.textContent = item.headword;
+      container.appendChild(heading);
+      for (const sense of item.senses) {
+        const line = document.createElement("p");
+        line.className = "card-meaning-text";
+        line.textContent = [sense.partOfSpeech, ...(sense.labels || []), sense.gloss].filter(Boolean).join(" · ");
+        container.appendChild(line);
+        const credit = document.createElement("small");
+        credit.textContent = `${sense.sourceName} · ${sense.license}`;
+        container.appendChild(credit);
       }
-
-      const words = segmentChineseText(text);
-
-      const allCards = state.activePack?.cards || (state.catalog?.packs?.[0]?.cards || []);
-      const cardMap = new Map();
-      allCards.forEach(c => {
-        if (c.front) cardMap.set(c.front, c);
-      });
-
-      // Common characters & particles dictionary
-      const commonWords = {
-        "莫": { reading: "mò", meaning: "do not, not" },
-        "形": { reading: "xíng", meaning: "appearance, shape, form" },
-        "莫要": { reading: "mò yào", meaning: "do not, must not" }
-      };
-
-      const wordDetails = await Promise.all(
-        words.map(async (w) => {
-          const card = cardMap.get(w);
-          if (card) {
-            return {
-              word: w,
-              pinyin: card.reading || "",
-              meaning: await translateLearningWord(w, target, card.meaning || ""),
-              isHsk: true
-            };
-          }
-
-          if (commonWords[w]) {
-            return {
-              word: w,
-              pinyin: commonWords[w].reading,
-              meaning: await translateLearningWord(w, target, commonWords[w].meaning),
-              isHsk: false
-            };
-          }
-
-          let trans = translationCache.get(`${TranslationSupport.sourceLanguage(state.activePack)}|${target}|${w}`);
-          if (!trans) {
-            try {
-              trans = await fetchGoogleTranslate(w, target);
-            } catch (e) {
-              trans = { translation: "", pinyin: "" };
-            }
-          }
-
-          return {
-            word: w,
-            pinyin: trans?.pinyin || "",
-            meaning: trans?.translation || "",
-            isHsk: false
-          };
-        })
-      );
-
-      // The input may have changed while multiple translations were loading.
-      if (requestId !== translationGeneration) return;
-      els.resultChinese.textContent = text;
-      els.resultPinyin.textContent = fullTrans.pinyin || "";
-      els.resultPinyin.hidden = !fullTrans.pinyin;
-      els.resultEnglish.textContent = fullTrans.translation || "(No translation returned)";
-
-      els.translateWordsGrid.innerHTML = "";
-      if (wordDetails.length > 0) {
-        els.translateWordsCard.hidden = false;
-        wordDetails.forEach(item => {
-          const a = document.createElement("a");
-          a.className = "breakdown-word-card";
-          a.href = `https://translate.google.com/?sl=${encodeURIComponent(TranslationSupport.sourceLanguage(state.activePack))}&tl=${encodeURIComponent(state.store.settings.translationLanguage || "en")}&text=${encodeURIComponent(item.word)}&op=translate`;
-          a.target = "_blank";
-          a.rel = "noopener noreferrer";
-          a.title = `Look up "${item.word}" on Google Translate`;
-
-          const topRow = document.createElement("div");
-          topRow.className = "card-word-top";
-
-          const wordSpan = document.createElement("span");
-          wordSpan.className = "card-word-text";
-          wordSpan.textContent = item.word;
-
-          const metaSpan = document.createElement("div");
-          metaSpan.style.display = "flex";
-          metaSpan.style.alignItems = "center";
-          metaSpan.style.gap = "4px";
-
-          if (item.isHsk) {
-            const hsk = document.createElement("span");
-            hsk.className = "hsk-badge-pill";
-            hsk.textContent = "HSK";
-            metaSpan.appendChild(hsk);
-          }
-
-          const extIcon = document.createElement("span");
-          extIcon.className = "card-ext-icon";
-          extIcon.textContent = "↗";
-          metaSpan.appendChild(extIcon);
-
-          topRow.appendChild(wordSpan);
-          topRow.appendChild(metaSpan);
-          a.appendChild(topRow);
-
-          if (item.pinyin) {
-            const pinyinSpan = document.createElement("div");
-            pinyinSpan.className = "card-pinyin-text";
-            pinyinSpan.textContent = item.pinyin;
-            a.appendChild(pinyinSpan);
-          }
-
-          if (item.meaning) {
-            const meaningSpan = document.createElement("div");
-            meaningSpan.className = "card-meaning-text";
-            meaningSpan.textContent = item.meaning;
-            a.appendChild(meaningSpan);
-          }
-
-          els.translateWordsGrid.appendChild(a);
-        });
-      } else {
-        els.translateWordsCard.hidden = true;
+      if (!item.senses.length) {
+        const missing = document.createElement("p");
+        missing.textContent = "No published entry in this dictionary pair.";
+        container.appendChild(missing);
       }
-
-      els.translateResult.hidden = false;
-      els.translateStatusIndicator.textContent = "Done";
-      setTimeout(() => {
-        if (els.translateStatusIndicator.textContent === "Done") {
-          els.translateStatusIndicator.textContent = "";
-        }
-      }, 2000);
-    } catch (err) {
-      if (requestId === translationGeneration) {
-        console.error("Translation execution error:", err);
-        els.translateStatusIndicator.textContent = "Error translating text";
-      }
-    } finally {
-      if (requestId === translationGeneration) els.translateBtn.disabled = false;
+      els.translateWordsGrid.appendChild(container);
     }
+    els.translateWordsCard.hidden = !details.length;
+    els.translateResult.hidden = false;
+    els.translateStatusIndicator.textContent = "Offline lookup complete";
   }
 
   function setupTranslateSection() {
     if (els.translateTargetSelect) {
       els.translateTargetSelect.addEventListener("change", event => {
-        const target = TranslationSupport.normalizeLanguage(event.target.value);
-        state.store.settings.translationLanguage = target;
-        if (els.meaningLanguageSelect) els.meaningLanguageSelect.value = target;
-        saveStoredState();
-        if (state.currentCard && state.currentQuiz) {
-          void localizeRenderedCard(state.currentCard, state.currentQuiz, isEnglishToChineseMode());
-        }
+        changeMeaningLanguage(event.target.value);
         if (els.translateInput.value.trim()) executeTranslation();
       });
     }
@@ -2847,14 +2662,14 @@
       const text = els.translateInput.value.trim();
       if (text) {
         const r = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
-        speak(text, { lang: "zh-CN", repeat: r });
+        speak(text, { lang: TranslationSupport.sourceLanguage(state.activePack), repeat: r });
       }
     });
 
     els.speakResultBtn.addEventListener("click", () => {
       const text = els.resultChinese.textContent.trim();
       if (text) {
-        speak(text, { lang: "zh-CN", repeat: 1 });
+        speak(text, { lang: TranslationSupport.sourceLanguage(state.activePack), repeat: 1 });
       }
     });
 
@@ -2863,7 +2678,7 @@
       if (trans && navigator.clipboard) {
         try {
           await navigator.clipboard.writeText(trans);
-          showToast("Translation copied to clipboard!");
+          showToast("Dictionary meaning copied to clipboard.");
         } catch (e) {
           console.warn("Copy failed:", e);
         }
@@ -2920,50 +2735,7 @@
     }
     if (els.meaningLanguageSelect) {
       els.meaningLanguageSelect.addEventListener("change", event => {
-        const target = TranslationSupport.normalizeLanguage(event.target.value);
-        state.store.settings.translationLanguage = target;
-        if (els.translateTargetSelect) els.translateTargetSelect.value = target;
-        saveStoredState();
-        updateWordLoopPreview();
-        if (state.currentCard && state.currentQuiz) {
-          void localizeRenderedCard(state.currentCard, state.currentQuiz, isEnglishToChineseMode());
-        }
-      });
-    }
-    // On-device translation is supported only by certain desktop browsers.
-    // Creating the translator may require a user gesture to download the pack.
-    if (els.onDeviceTranslationRow) {
-      const supported = typeof TranslationSupport.browserTranslator === "function" &&
-        Boolean(TranslationSupport.browserTranslator());
-      els.onDeviceTranslationRow.hidden = !supported;
-      els.enableOnDeviceTranslationBtn?.addEventListener("click", () => {
-        const target = TranslationSupport.normalizeLanguage(state.store.settings.translationLanguage);
-        if (target === "en") {
-          els.onDeviceTranslationStatus.textContent = "Select Vietnamese or another meaning language first.";
-          return;
-        }
-        els.onDeviceTranslationStatus.textContent = "Preparing the language pack…";
-        let pending;
-        try {
-          // This call must start synchronously from the click event.
-          pending = TranslationSupport.enableOnDeviceTranslation(
-            target, TranslationSupport.sourceLanguage(state.activePack), progress => {
-            els.onDeviceTranslationStatus.textContent = `Downloading language pack: ${progress}%`;
-          });
-        } catch (error) {
-          els.onDeviceTranslationStatus.textContent = error.message;
-          return;
-        }
-        Promise.resolve(pending).then(() => {
-          els.onDeviceTranslationStatus.textContent =
-            "On-device translation is ready. Meanings can be translated offline.";
-          if (state.currentCard && state.currentQuiz) {
-            void localizeRenderedCard(state.currentCard, state.currentQuiz, isEnglishToChineseMode());
-          }
-        }).catch(error => {
-          els.onDeviceTranslationStatus.textContent =
-            "Could not enable on-device translation: " + error.message;
-        });
+        changeMeaningLanguage(event.target.value);
       });
     }
     // Learning mode
@@ -2977,11 +2749,7 @@
         if (state.learningStatus === "active" && state.activePack) {
           presentNextCard({ autoPlay: false });
         }
-        showToast(nextMode === "chinese-to-picture"
-          ? "Mode 3 selected: Chinese → Picture. Saved until changed."
-          : nextMode === "english-to-chinese"
-            ? "Mode 2 selected: Meaning → Chinese. Saved until changed."
-            : "Mode 1 selected: Chinese → Meaning. Saved until changed.");
+        showToast("Quiz direction saved.");
       });
     }
 
@@ -3311,6 +3079,7 @@
   function switchTab(tabName) {
     els.tabButtons.forEach(btn => {
       btn.classList.toggle("active", btn.dataset.tab === tabName);
+      btn.setAttribute("aria-current", btn.dataset.tab === tabName ? "page" : "false");
     });
     els.tabViews.forEach(view => {
       view.classList.toggle("active", view.id === `${tabName}View`);
@@ -3434,6 +3203,8 @@
       const response = await fetch("vocabulary.json");
       if (!response.ok) throw new Error(`HTTP error ${response.status}`);
       const data = await expandVocabularyCatalog(await response.json());
+      await TranslationSupport.load();
+      data.packs.push(...TranslationSupport.studyPacks());
       state.catalog = data;
 
       // Populate pack selector
@@ -3441,20 +3212,26 @@
       data.packs.forEach(pack => {
         const option = document.createElement("option");
         option.value = pack.id;
-        option.textContent = `${pack.name} (${pack.cards.length})`;
+        option.textContent = pack.name;
         els.packSelect.appendChild(option);
       });
 
       const activePackId = state.store.settings.activePackId || data.defaultPackId || data.packs[0].id;
       els.packSelect.value = activePackId;
-      state.activePack = data.packs.find(p => p.id === activePackId) || data.packs[0];
+      state.store.settings.activePackId = activePackId;
+      applyDictionaryLanguage();
+      els.packSelect.value = state.activePack.id;
 
       els.packSelect.addEventListener("change", (e) => {
         const nextPack = data.packs.find(p => p.id === e.target.value);
         if (nextPack) {
           if (typeof wordLoopState !== "undefined" && wordLoopState.active) stopWordLoop({ silent: true });
-          state.activePack = nextPack;
+          stopAudio();
+          ++visibleTranslationGeneration;
+          ++translationGeneration;
           state.store.settings.activePackId = nextPack.id;
+          applyDictionaryLanguage();
+          els.translateResult.hidden = true;
           state.currentCard = null;
           state.currentQuiz = null;
           state.store.currentCardId = null;
@@ -3491,7 +3268,9 @@
     } catch (err) {
       console.error("Initialization error:", err);
       els.hanziTerm.textContent = "Error";
-      els.pinyinReading.textContent = `Could not load vocabulary.json: ${err.message}`;
+      els.pinyinReading.textContent = err.message;
+      els.learningSessionTitle.textContent = "Could not load the learning dictionaries";
+      els.learningSessionText.textContent = `${err.message} Reload to try again.`;
     }
   }
 

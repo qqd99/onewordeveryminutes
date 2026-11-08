@@ -1,6 +1,6 @@
 # Vocabulary SRS — Web App
 
-A browser-based Chinese vocabulary spaced-repetition app. No browser extension or plugin is required.
+A browser-based vocabulary spaced-repetition app with Chinese and Spanish learning packs and offline English or Vietnamese meanings. No browser extension or plugin is required.
 
 **Live site:** https://qqd99.github.io/onewordeveryminutes/
 
@@ -16,6 +16,10 @@ Visit the live site, click **Start learning**, and select a vocabulary pack. Und
 - `.github/workflows/` — deployment and test workflows.
 
 The web app is HTML, CSS, and vanilla JavaScript with no build-time dependencies. It can run as an offline-capable PWA after its assets have been cached.
+
+## Offline multilingual dictionary
+
+Choose the learning language in the vocabulary selector and the meaning language in Settings. Published, human-edited dictionary entries supply meanings offline. Coverage varies by pair. The dictionary format supports additional languages through attributed data files. See [dictionary coverage, sources and extension instructions](web/dictionary/README.md).
 
 ## Developing locally
 

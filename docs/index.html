@@ -3,54 +3,62 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Vocabulary SRS — Spaced Repetition Chinese Learning</title>
+  <title>Vocabulary SRS — Spaced Repetition Language Learning</title>
   <meta name="description" content="Adaptive spaced-repetition vocabulary learning web app with meaning choices, example sentences, and audio pronunciation." />
   <link rel="icon" type="image/png" href="icons/icon32.png" />
   <link rel="apple-touch-icon" href="icons/icon128.png" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <meta name="theme-color" content="#3b82f6" />
-  <link rel="stylesheet" href="style.css?v=38" />
+  <meta name="theme-color" content="#355847" />
+  <link rel="stylesheet" href="style.css?v=40" />
 </head>
 <body>
+  <svg class="icon-definitions" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="icon-sound" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4V5Z"/><path d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24"><path d="m8 5 11 7-11 7V5Z"/></symbol>
+    <symbol id="icon-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+    <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V4H4v12h4"/></symbol>
+    <symbol id="icon-book" viewBox="0 0 24 24"><path d="M12 5v15M3 4h4a5 5 0 0 1 5 2 5 5 0 0 1 5-2h4v15h-4a7 7 0 0 0-5 1 7 7 0 0 0-5-1H3V4Z"/></symbol>
+  </svg>
+
   <!-- Top App Header -->
   <header class="app-header">
     <div class="header-container">
       <a href="#" class="brand" id="brandLink">
-        <div class="brand-icon">汉</div>
+        <div class="brand-icon"><svg class="ui-icon" aria-hidden="true"><use href="#icon-book"></use></svg></div>
         <div class="brand-info">
           <h1>Vocabulary SRS</h1>
-          <span class="brand-badge" id="appModeBadge">Web App</span>
+          <span class="brand-badge" id="appModeBadge">Spaced repetition</span>
         </div>
       </a>
 
       <div class="header-actions">
-        <select id="quickSaveSelect" class="pack-select quick-save-select" aria-label="Switch learning save file"></select>
-        <select id="packSelect" class="pack-select" aria-label="Select vocabulary pack"></select>
+        <label class="header-field save-field"><span>Save</span><select id="quickSaveSelect" class="pack-select quick-save-select" aria-label="Switch learning save file"></select></label>
+        <label class="header-field language-field"><span>Learning</span><select id="packSelect" class="pack-select" aria-label="Select learning language and vocabulary pack"></select></label>
         <button id="themeToggle" class="icon-button" type="button" aria-label="Toggle dark mode" title="Toggle theme">
-          🌙
+          Dark
         </button>
       </div>
     </div>
   </header>
 
   <!-- Navigation Tabs -->
-  <nav class="nav-tabs-container">
+  <nav class="nav-tabs-container" aria-label="Main navigation">
     <div class="nav-tabs">
-      <button class="tab-button active" data-tab="study" type="button">
-        <span>📖 Study</span>
+      <button class="tab-button active" aria-current="page" data-tab="study" type="button">
+        <span>Study</span>
         <span class="tab-badge" id="dueBadge">0</span>
       </button>
       <button class="tab-button" data-tab="deck" type="button">
-        <span>📚 Word List</span>
+        <span>Words</span>
       </button>
       <button class="tab-button" data-tab="translate" type="button">
-        <span>🌐 Translate</span>
+        <span>Dictionary</span>
       </button>
       <button class="tab-button" data-tab="stats" type="button">
-        <span>📊 Statistics</span>
+        <span>Stats</span>
       </button>
       <button class="tab-button" data-tab="settings" type="button">
-        <span>⚙️ Settings</span>
+        <span>Settings</span>
       </button>
     </div>
   </nav>
@@ -72,48 +80,20 @@
         </div>
 
         <button id="pauseLearningBtn" class="btn btn-secondary session-pause-btn" type="button" hidden>
-          ⏸ Pause learning
+          Pause
         </button>
       </div>
 
       <section class="learning-session-gate" id="learningSessionGate" aria-live="polite">
-        <div class="learning-session-icon">📚</div>
+
         <h2 id="learningSessionTitle">Ready to learn?</h2>
         <p id="learningSessionText">Loading vocabulary…</p>
         <button id="startLearningBtn" class="btn btn-primary session-main-btn" type="button" disabled>
-          ▶ Start learning
+          <svg class="ui-icon" aria-hidden="true"><use href="#icon-play"></use></svg> Start learning
         </button>
         <button id="resumeLearningBtn" class="btn btn-primary session-main-btn" type="button" hidden>
-          ▶ Resume learning
+          <svg class="ui-icon" aria-hidden="true"><use href="#icon-play"></use></svg> Resume learning
         </button>
-      </section>
-
-      <section class="word-loop-panel" id="wordLoopPanel" aria-labelledby="wordLoopTitle">
-        <div class="word-loop-heading">
-          <div>
-            <h2 id="wordLoopTitle">Word loop</h2>
-            <p>Review your most recently studied words, not unseen words. Only one word, its pinyin and meaning appear at a time.</p>
-          </div>
-          <div class="word-loop-controls">
-            <label class="word-loop-field">
-              <span>Words</span>
-              <input type="number" id="wordLoopCount" class="input-number" min="1" max="10000" step="1" value="10" />
-            </label>
-            <label class="word-loop-field">
-              <span>Repeats per word (<strong id="wordRepeatLabel">2</strong>×)</span>
-              <input type="number" id="wordRepeatCount" class="input-number" min="1" max="10" step="1" value="2" />
-            </label>
-            <button id="startWordLoopBtn" class="btn btn-primary" type="button">▶ Start loop</button>
-            <button id="stopWordLoopBtn" class="btn btn-secondary" type="button" hidden>■ Stop</button>
-          </div>
-        </div>
-        <p id="wordLoopStatus" class="word-loop-status" role="status">Choose how many recent words to review, then start the loop.</p>
-        <div id="wordLoopPreview" class="word-loop-current" aria-live="polite" aria-atomic="true">
-          <span id="wordLoopCurrentWord" class="word-loop-current-word">—</span>
-          <span id="wordLoopCurrentReading" class="word-loop-current-reading" hidden></span>
-          <span id="wordLoopCurrentSeparator" class="word-loop-current-separator" aria-hidden="true">—</span>
-          <span id="wordLoopCurrentMeaning" class="word-loop-current-meaning">The current word will appear here.</span>
-        </div>
       </section>
 
       <!-- Flashcard / Quiz Component -->
@@ -122,10 +102,10 @@
           <span class="stage-badge" id="stageBadge">NEW WORD</span>
           <div class="speak-controls">
             <button id="speakWordBtn" class="audio-btn" type="button" aria-label="Hear word">
-              🔊 Word
+              <svg class="ui-icon" aria-hidden="true"><use href="#icon-sound"></use></svg> Word
             </button>
             <button id="speakSentenceBtn" class="audio-btn" type="button" aria-label="Hear sentence">
-              🔊 Sentence
+              <svg class="ui-icon" aria-hidden="true"><use href="#icon-sound"></use></svg> Sentence
             </button>
           </div>
         </div>
@@ -149,8 +129,8 @@
           <div id="aiReview" class="ai-picture-review" hidden>
             <p id="aiReviewText" role="status"></p>
             <div class="ai-picture-actions">
-              <button id="aiApproveBtn" class="btn btn-primary" type="button">👍 Good — save for this word</button>
-              <button id="aiRegenerateBtn" class="btn btn-secondary" type="button">↻ Bad — find another photo for this word</button>
+              <button id="aiApproveBtn" class="btn btn-primary" type="button">Good — save for this word</button>
+              <button id="aiRegenerateBtn" class="btn btn-secondary" type="button">Bad — find another photo for this word</button>
             </div>
           </div>
         </div>
@@ -158,9 +138,9 @@
         <!-- Example Sentence Card -->
         <div class="example-card" id="exampleCard">
           <div class="example-header">
-            <span class="example-label">COMMON SENTENCE</span>
+            <span class="example-label">Example sentence</span>
             <button id="speakExampleBtn" class="audio-btn" type="button" aria-label="Hear example sentence">
-              🔊 Listen
+              <svg class="ui-icon" aria-hidden="true"><use href="#icon-sound"></use></svg> Listen
             </button>
           </div>
           <div class="example-hanzi" id="exampleHanzi">Loading example sentence…</div>
@@ -170,8 +150,8 @@
           <!-- Word Breakdown & Translation Section -->
           <div class="example-breakdown" id="exampleBreakdown" hidden>
             <div class="breakdown-header">
-              <span class="breakdown-label">WORD BREAKDOWN</span>
-              <span class="breakdown-hint">Click word to open in Google Translate ↗</span>
+              <span class="breakdown-label">Word meanings</span>
+              <span class="breakdown-hint">Meanings from the selected offline dictionary</span>
             </div>
             <div class="breakdown-chips" id="breakdownChips"></div>
           </div>
@@ -179,7 +159,7 @@
 
         <!-- Review Controls Panel -->
         <div class="review-actions-panel" id="reviewActionsPanel">
-          <div class="actions-label" id="actionsLabel">SRS Interval Adjustment</div>
+          <div class="actions-label" id="actionsLabel">Review this word</div>
           <div class="action-buttons-row">
             <button id="newWordBtn" class="btn btn-secondary" type="button" title="Defer card without learning (Shortcut: N)">
               New Word (N)
@@ -204,14 +184,44 @@
           <span><span class="kbd">F</span> Forget</span>
         </div>
       </article>
+      <details class="review-tools">
+        <summary>Review recent words <span>Audio practice</span></summary>
+      <section class="word-loop-panel" id="wordLoopPanel" aria-labelledby="wordLoopTitle">
+        <div class="word-loop-heading">
+          <div>
+            <h2 id="wordLoopTitle">Word loop</h2>
+            <p>Listen again to recently studied words, one at a time.</p>
+          </div>
+          <div class="word-loop-controls">
+            <label class="word-loop-field">
+              <span>Words</span>
+              <input type="number" id="wordLoopCount" class="input-number" min="1" max="10000" step="1" value="10" />
+            </label>
+            <label class="word-loop-field">
+              <span>Repeats per word (<strong id="wordRepeatLabel">2</strong>×)</span>
+              <input type="number" id="wordRepeatCount" class="input-number" min="1" max="10" step="1" value="2" />
+            </label>
+            <button id="startWordLoopBtn" class="btn btn-primary" type="button"><svg class="ui-icon" aria-hidden="true"><use href="#icon-play"></use></svg> Start loop</button>
+            <button id="stopWordLoopBtn" class="btn btn-secondary" type="button" hidden>Stop</button>
+          </div>
+        </div>
+        <p id="wordLoopStatus" class="word-loop-status" role="status">Choose how many recent words to review, then start the loop.</p>
+        <div id="wordLoopPreview" class="word-loop-current" aria-live="polite" aria-atomic="true">
+          <span id="wordLoopCurrentWord" class="word-loop-current-word">—</span>
+          <span id="wordLoopCurrentReading" class="word-loop-current-reading" hidden></span>
+          <span id="wordLoopCurrentSeparator" class="word-loop-current-separator" aria-hidden="true">—</span>
+          <span id="wordLoopCurrentMeaning" class="word-loop-current-meaning">The current word will appear here.</span>
+        </div>
+      </section>
+      </details>
     </section>
 
     <!-- WORD LIST / DECK BROWSER TAB -->
     <section id="deckView" class="tab-view">
       <div class="deck-controls">
         <div class="search-box">
-          <span class="search-icon">🔍</span>
-          <input type="text" id="deckSearchInput" class="search-input" placeholder="Search Hanzi, Pinyin, or English..." />
+          <span class="search-icon"><svg class="ui-icon" aria-hidden="true"><use href="#icon-search"></use></svg></span>
+          <input type="text" id="deckSearchInput" class="search-input" placeholder="Search words, readings, or meanings..." />
         </div>
         <div class="filter-chips">
           <button class="chip active" data-filter="all" type="button">All (<span id="countAll">0</span>)</button>
@@ -230,17 +240,17 @@
     <section id="translateView" class="tab-view">
       <div class="translate-container">
         <div class="translate-header">
-          <h2>Sentence Translation &amp; Vocabulary Breakdown</h2>
-          <p>Translate Chinese sentences to your selected language, view Pinyin pronunciation, and break down words with definitions and Google Translate lookup.</p>
+          <h2>Dictionary</h2>
+          <p>Words, meanings and context from your offline dictionaries.</p>
         </div>
 
         <!-- Quick Sample Chips -->
         <div class="sample-chips-bar">
-          <span class="sample-label">Try sample:</span>
-          <button class="sample-chip" type="button" data-sample="莫要看我形">莫要看我形</button>
-          <button class="sample-chip" type="button" data-sample="我总是说好!">我总是说好!</button>
-          <button class="sample-chip" type="button" data-sample="学而时习之，不亦说乎？">学而时习之</button>
-          <button class="sample-chip" type="button" data-sample="你好，很高兴认识你。">很高兴认识你</button>
+          <span class="sample-label">Try</span>
+          <button class="sample-chip" type="button" data-sample="你好">你好</button>
+          <button class="sample-chip" type="button" data-sample="学习">学习</button>
+          <button class="sample-chip" type="button" data-sample="词典">词典</button>
+          <button class="sample-chip" type="button" data-sample="水">水</button>
         </div>
 
         <!-- Input Area Card -->
@@ -250,8 +260,8 @@
               id="translateInput"
               class="translate-textarea"
               rows="3"
-              placeholder="what do you need to translate?"
-              aria-label="Input Chinese text to translate"
+              placeholder="Enter a word or phrase"
+              aria-label="Word or phrase in the selected learning language"
             ></textarea>
             <button id="clearTranslateBtn" class="clear-input-btn" type="button" title="Clear text" hidden>✕</button>
           </div>
@@ -262,8 +272,8 @@
               <span id="translateStatusIndicator" class="status-indicator"></span>
             </div>
             <div class="action-buttons-group">
-              <button id="speakInputBtn" class="btn btn-secondary btn-icon-text" type="button" title="Pronounce Chinese text">
-                🔊 Listen
+              <button id="speakInputBtn" class="btn btn-secondary btn-icon-text" type="button" title="Pronounce text in the learning language">
+                <svg class="ui-icon" aria-hidden="true"><use href="#icon-sound"></use></svg> Listen
               </button>
               <label for="translateTargetSelect">To
                 <select id="translateTargetSelect" class="pack-select" aria-label="Translation target language">
@@ -280,7 +290,7 @@
                 </select>
               </label>
               <button id="translateBtn" class="btn btn-primary" type="button">
-                Translate
+                Look up
               </button>
             </div>
           </div>
@@ -291,13 +301,13 @@
           <!-- Full Sentence Translation Card -->
           <div class="translate-card sentence-result-card">
             <div class="result-card-header">
-              <span class="result-label">SENTENCE TRANSLATION</span>
+              <span class="result-label">Dictionary entry</span>
               <div class="result-card-actions">
                 <button id="speakResultBtn" class="audio-btn" type="button" title="Listen to sentence">
-                  🔊 Speak
+                  <svg class="ui-icon" aria-hidden="true"><use href="#icon-sound"></use></svg> Speak
                 </button>
-                <button id="copyTranslationBtn" class="icon-button" type="button" title="Copy translated text">
-                  📋
+                <button id="copyTranslationBtn" class="icon-button" type="button" title="Copy dictionary meaning">
+                  <svg class="ui-icon" aria-hidden="true"><use href="#icon-copy"></use></svg>
                 </button>
               </div>
             </div>
@@ -309,8 +319,8 @@
           <!-- Word-by-Word Breakdown Card -->
           <div class="translate-card words-result-card" id="translateWordsCard">
             <div class="result-card-header">
-              <span class="result-label">WORD BREAKDOWN &amp; MEANINGS</span>
-              <span class="result-hint">Click any word to translate on Google ↗</span>
+              <span class="result-label">Word meanings</span>
+              <span class="result-hint">Published senses and source attribution</span>
             </div>
             <div class="word-breakdown-grid" id="translateWordsGrid"></div>
           </div>
@@ -370,7 +380,7 @@
       <div class="settings-panel">
         <header class="settings-heading">
           <h2>Settings</h2>
-          <p>Keep only the options you use. Changes save automatically; Save settings stores everything together.</p>
+          <p>Changes save automatically. Save settings stores everything together.</p>
         </header>
         <div class="settings-savebar">
           <button id="saveSettingsBtn" class="btn btn-primary" type="button">Save settings</button>
@@ -380,7 +390,7 @@
         <div class="settings-group">
           <h2 class="settings-group-title">Learning</h2>
           <div class="setting-row">
-            <div class="setting-info"><label for="learningModeSelect">Quiz direction</label><p>Mode 1: Chinese → localized meaning. Mode 2: localized meaning → Chinese. Mode 3: Chinese → picture. Mode 3 searches openly licensed photos on Wikimedia Commons for the current word and keeps two locally saved distractors. Internet access is needed for uncached words. Your selection is saved until changed.</p></div>
+            <div class="setting-info"><label for="learningModeSelect">Quiz direction</label><p>Study words, meanings or pictures. Picture search uses Wikimedia Commons. Your selection is saved until changed.</p></div>
             <div class="setting-control">
               <select id="learningModeSelect" class="pack-select">
                 <option value="chinese-to-english">Mode 1: Chinese → meaning</option>
@@ -390,7 +400,7 @@
             </div>
           </div>
           <div class="setting-row">
-            <div class="setting-info"><label for="meaningLanguageSelect">Meaning language</label></div>
+            <div class="setting-info"><label for="meaningLanguageSelect">Meaning language</label><p id="dictionaryCoverage" role="status">Loading installed dictionaries…</p></div>
             <div class="setting-control">
               <select id="meaningLanguageSelect" class="pack-select">
                 <option value="en">English</option>
@@ -449,7 +459,7 @@
               </div>
             </div>
             <div class="setting-row">
-              <div class="setting-info"><label for="voiceSelect">Chinese voice</label></div>
+              <div class="setting-info"><label for="voiceSelect">Pronunciation voice</label></div>
               <div class="setting-control"><select id="voiceSelect" class="pack-select"></select></div>
             </div>
           </details>
@@ -502,8 +512,8 @@
               </div>
             </div>
             <div class="save-slots-actions">
-              <button id="newSaveBtn" class="btn btn-secondary" type="button">＋ New</button>
-              <button id="duplicateSaveBtn" class="btn btn-secondary" type="button">⧉ Duplicate</button>
+              <button id="newSaveBtn" class="btn btn-secondary" type="button">New</button>
+              <button id="duplicateSaveBtn" class="btn btn-secondary" type="button">Duplicate</button>
               <button id="renameSaveBtn" class="btn btn-secondary" type="button">Rename</button>
               <button id="deleteSaveBtn" class="btn btn-danger" type="button">Delete</button>
             </div>
@@ -536,7 +546,8 @@
             </div>
           </div>
           <div class="settings-group">
-            <h2 class="settings-group-title">Vocabulary sources</h2>
+            <h2 class="settings-group-title">Dictionary and vocabulary sources</h2>
+            <p class="save-slot-tip">Offline meanings come from CC-CEDICT, FreeDict and Vietnamese Wiktionary. Coverage varies by language pair. <a href="dictionary/README.md" target="_blank" rel="noopener noreferrer">View dictionary sources, licenses and extension format</a>.</p>
             <p class="save-slot-tip">The 10,000-word catalog includes 9,000 frequency-ranked entries and example sentences adapted from Zhongdex by SayMei and CC-CEDICT, licensed under CC BY-SA 4.0. <a href="VOCABULARY_SOURCES.md" target="_blank" rel="noopener noreferrer">View sources, attribution and license</a>.</p>
           </div>
         </details>
@@ -561,10 +572,10 @@
 
   <!-- Load Scripts -->
   <script src="srs.js?v=19"></script>
-  <script src="translation.js?v=25"></script>
+  <script src="translation.js?v=39"></script>
   <script src="ai-image-config.js?v=34"></script>
   <script src="picture-catalog.js?v=30"></script>
   <script src="internet-picture.js?v=34"></script>
-  <script src="app.js?v=38"></script>
+  <script src="app.js?v=40"></script>
 </body>
 </html>

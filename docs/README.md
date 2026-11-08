@@ -1,6 +1,10 @@
 # Vocabulary SRS — Web & GitHub Pages Version
 
-A modern, responsive, client-side spaced repetition (SRS) web app for learning Chinese vocabulary. Built with pure HTML5, CSS3, and JavaScript — zero dependencies and zero build steps. Text and locally bundled picture quizzes work offline after the app has been cached.
+A modern, responsive, client-side spaced repetition (SRS) web app for learning vocabulary from selectable language packs. Built with pure HTML5, CSS3, and JavaScript — zero dependencies and zero build steps. Text and locally bundled picture quizzes work offline after the app has been cached.
+
+## Offline multilingual dictionaries in v39
+
+Chinese and Spanish learning packs use published offline dictionaries for English and Vietnamese meanings. The meaning-language selector lists installed pairs, and study cards are filtered to their coverage. The Dictionary tab provides local word and phrase lookup with source attribution. Historical translation sections below describe earlier releases. See [coverage, licensing, source hashes and adding language pairs](dictionary/README.md).
 
 ---
 

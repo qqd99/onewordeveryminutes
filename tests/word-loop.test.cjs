@@ -9,6 +9,11 @@ const app = fs.readFileSync(path.join(root, "web/app.js"), "utf8");
 const html = fs.readFileSync(path.join(root, "web/index.html"), "utf8");
 const css = fs.readFileSync(path.join(root, "web/style.css"), "utf8");
 
+test("recent-word practice follows the study card and starts collapsed", () => {
+  assert.match(html, /<details class="review-tools">/);
+  assert.ok(html.indexOf('id="wordLoopPanel"') > html.indexOf('id="flashcard"'));
+});
+
 function extract(first, last) {
   const start = app.indexOf(first);
   const end = app.indexOf(last, start);
@@ -150,16 +155,16 @@ test("word loop shows only the current word with its meaning", () => {
   const preview = extract("  function updateWordLoopPreview()", "  function stopWordLoop(");
   assert.match(preview, /wordLoopState\.active \? queue\[wordLoopState.index\] : queue\[0\]/);
   assert.doesNotMatch(preview, /queue\.slice|visible\.forEach|replaceChildren/);
-  assert.match(app, /TranslationSupport\.localizePresentation\(\s*card, null/);
+  assert.match(app, /wordLoopCurrentMeaning.textContent = card.meaning/);
   assert.match(preview, /card\?\.reading \|\| ""/);
   assert.match(preview, /wordLoopCurrentReading\.hidden = !card\?\.reading/);
 });
 
 test("word-loop and settings markup is mirrored by the app script and cache version", () => {
-  assert.match(html, /app\.js\?v=38/);
-  assert.match(html, /style\.css\?v=38/);
+  assert.match(html, /app\.js\?v=40/);
+  assert.match(html, /style\.css\?v=40/);
   const sw = fs.readFileSync(path.join(root, "web/sw.js"), "utf8");
-  assert.match(sw, /vocab-srs-cache-v38/);
-  assert.match(sw, /\.\/app\.js\?v=38/);
-  assert.match(sw, /\.\/style\.css\?v=38/);
+  assert.match(sw, /vocab-srs-cache-v40/);
+  assert.match(sw, /\.\/app\.js\?v=40/);
+  assert.match(sw, /\.\/style\.css\?v=40/);
 });
