@@ -404,7 +404,7 @@
         for (const code of targets) {
           const option = document.createElement("option");
           option.value = code;
-          option.textContent = TranslationSupport.LANGUAGES[code] || code;
+          option.textContent = TranslationSupport.languageLabel(code);
           control.appendChild(option);
         }
       }
@@ -430,8 +430,18 @@
     if (els.packSelect) els.packSelect.value = source;
     syncMeaningLanguageControls();
     const coverage = state.activePack.dictionaryCoverage;
+    const representations = [source, coverage.target].map(code => {
+      const detail = TranslationSupport.languageDetails(code);
+      return /transcription|source representation/i.test(detail.representation || "")
+        ? `${TranslationSupport.LANGUAGES[code]} · ${detail.representation.toLowerCase()}` : "";
+    }).filter(Boolean).join(" / ");
+    const representation = document.querySelector("#languageRepresentation");
+    if (representation) {
+      representation.textContent = representations;
+      representation.hidden = !representations;
+    }
     const info = document.querySelector("#dictionaryCoverage");
-    if (info) info.textContent = `${coverage.covered.toLocaleString()} of ${coverage.total.toLocaleString()} words covered · ${TranslationSupport.LANGUAGES[source] || source} → ${TranslationSupport.LANGUAGES[coverage.target] || coverage.target} · Published human-edited dictionaries`;
+    if (info) info.textContent = `${coverage.covered.toLocaleString()} of ${coverage.total.toLocaleString()} words covered · ${TranslationSupport.LANGUAGES[source] || source} → ${TranslationSupport.LANGUAGES[coverage.target] || coverage.target} · ${TranslationSupport.learningLanguages().length} published language columns · ${representations || "Published human-edited dictionaries"}`;
     if (els.learningModeSelect) {
       const name = TranslationSupport.LANGUAGES[source] || source;
       const labels = [`Mode 1 · ${name} → meaning`, `Mode 2 · meaning → ${name}`, `Mode 3 · ${name} → picture`];
@@ -769,7 +779,7 @@
       defaultOpt.textContent = "Auto-detect learning-language voice";
       els.voiceSelect.appendChild(defaultOpt);
 
-      const language = TranslationSupport.sourceLanguage(state.activePack).split("-")[0];
+      const language = (state.activePack?.speechLang || TranslationSupport.sourceLanguage(state.activePack)).split("-")[0];
       const zhVoices = (voices || []).filter(v => v.lang.toLowerCase().split("-")[0] === language);
       for (const v of zhVoices) {
         const opt = document.createElement("option");
@@ -2021,6 +2031,7 @@
         btn.setAttribute("aria-label", `Photo option ${index + 1}`);
       } else {
         const spanText = document.createElement("span");
+        spanText.dir = "auto";
         spanText.textContent = choice.text;
         btn.appendChild(spanText);
       }
@@ -2393,6 +2404,7 @@
 
       const hanzi = document.createElement("div");
       hanzi.className = "word-hanzi";
+      hanzi.dir = "auto";
       hanzi.textContent = card.front;
 
       const readingMeaning = document.createElement("div");
@@ -2404,6 +2416,7 @@
 
       const meaning = document.createElement("div");
       meaning.className = "word-meaning";
+      meaning.dir = "auto";
       meaning.textContent = card.meaning || "";
 
       readingMeaning.appendChild(pinyin);
@@ -2614,11 +2627,13 @@
       container.className = "breakdown-word-card";
       const heading = document.createElement("div");
       heading.className = "card-word-text";
+      heading.dir = "auto";
       heading.textContent = item.headword;
       container.appendChild(heading);
       for (const sense of item.senses) {
         const line = document.createElement("p");
         line.className = "card-meaning-text";
+        line.dir = "auto";
         line.textContent = [sense.partOfSpeech, ...(sense.labels || []), sense.gloss].filter(Boolean).join(" · ");
         container.appendChild(line);
         const credit = document.createElement("small");
@@ -2686,14 +2701,14 @@
       const text = els.translateInput.value.trim();
       if (text) {
         const r = Math.max(1, Number(state.store.settings.wordRepeat) || 2);
-        speak(text, { lang: TranslationSupport.sourceLanguage(state.activePack), repeat: r });
+        speak(text, { lang: state.activePack.speechLang || TranslationSupport.sourceLanguage(state.activePack), repeat: r });
       }
     });
 
     els.speakResultBtn.addEventListener("click", () => {
       const text = els.resultChinese.textContent.trim();
       if (text) {
-        speak(text, { lang: TranslationSupport.sourceLanguage(state.activePack), repeat: 1 });
+        speak(text, { lang: state.activePack.speechLang || TranslationSupport.sourceLanguage(state.activePack), repeat: 1 });
       }
     });
 
@@ -3251,7 +3266,7 @@
       TranslationSupport.learningLanguages().forEach(language => {
         const option = document.createElement("option");
         option.value = language;
-        option.textContent = TranslationSupport.LANGUAGES[language] || language;
+        option.textContent = TranslationSupport.languageLabel(language);
         els.packSelect.appendChild(option);
       });
       applyDictionaryLanguage();

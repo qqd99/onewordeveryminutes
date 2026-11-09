@@ -7,7 +7,13 @@
   let sources = {};
   let conceptRows = [];
   let languageIndex = new Map();
+  let columnRows = new Map();
+  let compactColumns = new Map();
+  let rowLanguages = new Map();
+  let rowIndex = new Map();
+  let indexedColumns = new Set();
   let availableTargets = new Map();
+  let targetCache = new Map();
   let legacyPacks = [];
   let studyIds = new Map();
   let loading = null;
@@ -18,13 +24,25 @@
     const value = String(language || "").trim().replace(/_/g, "-");
     const names = { English: "en", Vietnamese: "vi", Italian: "it", Spanish: "es", Chinese: "zh-CN" };
     if (names[value]) return names[value];
-    if (/^(zh|cmn)(-|$)/i.test(value)) return "zh-CN";
+    if (/^(zh|cmn)(?:-(?:CN|Hans))?$/i.test(value)) return "zh-CN";
     try { return Intl.getCanonicalLocales(value)[0] || "en"; }
     catch (_) { return "en"; }
   }
 
   function sourceLanguage(pack) {
     return normalizeLanguage(pack?.languageCode || pack?.speechLang || pack?.language || "en");
+  }
+
+  function languageDetails(language) {
+    const code = normalizeLanguage(language);
+    return catalog?.languageDetails?.[code] || { speechLang: code, representation: "" };
+  }
+
+  function languageLabel(language) {
+    const detail = languageDetails(language);
+    const representation = detail.representation || "";
+    const suffix = /transcription|source representation/i.test(representation) ? ` · ${representation.toLowerCase()}` : "";
+    return (LANGUAGES[language] || language) + suffix;
   }
 
   function wordKey(word, language) {
@@ -58,6 +76,9 @@
     const nextRows = [];
     const nextIndex = new Map();
     const nextTargets = new Map();
+    const nextColumnRows = new Map();
+    const nextCompact = new Map();
+    const nextRowLanguages = new Map();
     const rowIds = new Set();
     const add = (language, forms, record, targets) => {
       if (!nextIndex.has(language)) nextIndex.set(language, new Map());
@@ -71,8 +92,9 @@
     };
     for (const name of data.rowFiles) {
       const file = files[name];
-      for (const row of file.rows) {
-        if (!row.id || rowIds.has(row.id) || !row.cells) throw new Error("Invalid or duplicate vocabulary row.");
+      for (const inputRow of file.rows) {
+        if (!inputRow?.id || rowIds.has(inputRow.id) || !inputRow.cells) throw new Error("Invalid or duplicate vocabulary row.");
+        const row = { ...inputRow, cells: { ...inputRow.cells } };
         rowIds.add(row.id);
         for (const [language, cell] of Object.entries(row.cells)) {
           if (!data.languages[language] || !Array.isArray(cell.forms) || !cell.forms.length ||
@@ -81,9 +103,33 @@
               cell.sources.some(credit => !validSource(nextSources[credit.id]))) {
             throw new Error(`Invalid language cell in ${row.id}.`);
           }
-          add(language, cell.forms, { row }, Object.keys(row.cells));
+          if (!nextColumnRows.has(language)) nextColumnRows.set(language, []);
+          nextColumnRows.get(language).push(row);
         }
         nextRows.push(row);
+        nextRowLanguages.set(row, Object.keys(row.cells));
+      }
+    }
+    const rowsById = new Map(nextRows.map(row => [row.id, row]));
+    for (const name of data.rowFiles) {
+      for (const [language, encoded] of Object.entries(files[name].columns || {})) {
+        if (!data.languages[language] || nextCompact.has(language) || typeof encoded !== "string") throw new Error("Invalid compact language column.");
+        const cells = JSON.parse(encoded);
+        if (!cells || typeof cells !== "object" || Array.isArray(cells)) throw new Error("Invalid compact language column.");
+        for (const [id, cell] of Object.entries(cells)) {
+          const row = rowsById.get(id);
+          if (!row || row.cells[language] || !Array.isArray(cell) || cell.length !== 5 ||
+              !Array.isArray(cell[0]) || !cell[0].length || cell[0].some(form => typeof form !== "string" || !form.trim()) ||
+              !validSource(nextSources[cell[1]]) || !Array.isArray(cell[2]) || !cell[2].length ||
+              cell[2].some(key => typeof key !== "string" || !key) || typeof cell[3] !== "string" ||
+              !Array.isArray(cell[4]) || cell[4].some(note => typeof note !== "string")) {
+            throw new Error(`Invalid compact cell in ${id}.`);
+          }
+          if (!nextColumnRows.has(language)) nextColumnRows.set(language, []);
+          nextColumnRows.get(language).push(row);
+          nextRowLanguages.get(row).push(language);
+        }
+        nextCompact.set(language, encoded);
       }
     }
     // Published bilingual sources enter the same sparse row model. Their glosses
@@ -109,7 +155,13 @@
     sources = nextSources;
     conceptRows = nextRows;
     languageIndex = nextIndex;
+    columnRows = nextColumnRows;
+    compactColumns = nextCompact;
+    rowLanguages = nextRowLanguages;
+    rowIndex = rowsById;
+    indexedColumns = new Set();
     availableTargets = nextTargets;
+    targetCache = new Map();
     importedRows = new WeakMap();
     packCache = new WeakMap();
     legacyPacks = [];
@@ -135,12 +187,43 @@
   }
 
   function learningLanguages() {
-    return Object.keys(catalog?.languages || {}).filter(language => languageIndex.has(language));
+    return Object.keys(catalog?.languages || {}).filter(language => columnRows.has(language) || languageIndex.has(language));
+  }
+
+  function prepareColumn(language, index = false) {
+    const encoded = compactColumns.get(language);
+    if (encoded) {
+      for (const [id, cell] of Object.entries(JSON.parse(encoded))) {
+        rowIndex.get(id).cells[language] = { forms: cell[0], sources: cell[2].map(key => ({ id: cell[1], key })),
+          reading: cell[3], notes: cell[4] };
+      }
+    }
+    compactColumns.delete(language);
+    if (!index || indexedColumns.has(language)) return;
+    if (!languageIndex.has(language)) languageIndex.set(language, new Map());
+    const words = languageIndex.get(language);
+    for (const row of columnRows.get(language) || []) {
+      for (const form of row.cells[language].forms) {
+        const key = wordKey(form, language);
+        if (!words.has(key)) words.set(key, []);
+        words.get(key).push({ row });
+      }
+    }
+    indexedColumns.add(language);
   }
 
   function targetLanguages(source) {
-    const targets = availableTargets.get(normalizeLanguage(source));
-    return Object.keys(catalog?.languages || {}).filter(language => targets?.has(language));
+    const code = normalizeLanguage(source);
+    if (targetCache.has(code)) return targetCache.get(code);
+    const targets = new Set(availableTargets.get(code));
+    // Build the union only for the selected column, once per installation.
+    // Installing hundreds of columns must not build every language pair per row.
+    for (const row of columnRows.get(code) || []) {
+      for (const language of rowLanguages.get(row)) if (language !== code) targets.add(language);
+    }
+    const result = Object.keys(catalog?.languages || {}).filter(language => targets.has(language));
+    targetCache.set(code, result);
+    return result;
   }
 
   function rowsFor(record) {
@@ -176,6 +259,8 @@
   function lookup(word, targetLanguage, fromLanguage, sourceKey = "") {
     const source = normalizeLanguage(fromLanguage);
     const target = normalizeLanguage(targetLanguage);
+    prepareColumn(source, true);
+    prepareColumn(target);
     const records = languageIndex.get(source)?.get(wordKey(word, source)) || [];
     const rows = records.flatMap(rowsFor).filter(row => row.cells[target] && (!sourceKey || row.sourceKey === sourceKey));
     const senses = rows.map(row => describeRow(row, target, source));
@@ -228,11 +313,17 @@
   function bindVocabulary(packs) {
     legacyPacks = packs;
     studyIds = new Map();
-    for (const language of learningLanguages()) {
+    for (const language of new Set(packs.map(sourceLanguage))) {
+      prepareColumn(language);
       const old = new Map(packs.filter(pack => sourceLanguage(pack) === language)
         .flatMap(pack => pack.cards.map(card => [wordKey(card.front, language), card])));
       const claimed = new Set();
-      for (const row of conceptRows.filter(item => item.cells[language])) {
+      // Existing concept cells claim legacy IDs before newly added WOLD cells.
+      // A new homograph earlier in the list must not move a saved sense's ID.
+      const rows = [...(columnRows.get(language) || [])].sort((a, b) =>
+        Number(a.cells[language].sources.every(credit => credit.id === "wold-2009")) -
+        Number(b.cells[language].sources.every(credit => credit.id === "wold-2009")));
+      for (const row of rows) {
         const word = row.cells[language].forms[0];
         const legacy = old.get(wordKey(word, language));
         const id = legacy && !claimed.has(legacy.id) ? legacy.id : `row:${row.id}:${language}`;
@@ -245,13 +336,16 @@
   function learningPack(learningLanguage, meaningLanguage) {
     const source = normalizeLanguage(learningLanguage);
     const target = normalizeLanguage(meaningLanguage);
-    const rows = conceptRows.filter(row => row.cells[source]);
+    prepareColumn(source);
+    prepareColumn(target);
+    const rows = columnRows.get(source) || [];
+    const speechLang = languageDetails(source).speechLang || source;
     const cards = rows.filter(row => row.cells[target]).map(row => {
       const cell = row.cells[source];
       const saved = studyIds.get(`${row.id}|${source}`);
       return { id: saved?.id || `row:${row.id}:${source}`, rowId: row.id,
         front: cell.forms[0], reading: saved?.reading || cell.reading || "",
-        meaning: cellText(row.cells[target]), speechLang: source, example: null,
+        meaning: cellText(row.cells[target]), speechLang, example: null,
         dictionaryLocalized: true, meaningLanguageCode: target,
         dictionarySenses: [describeRow(row, target, source)] };
     });
@@ -267,14 +361,15 @@
         }
       }
     }
-    return { id: `language:${source}`, languageCode: source, speechLang: source,
+    return { id: `language:${source}`, languageCode: source, speechLang,
       name: LANGUAGES[source] || source, cards, meaningLanguageCode: target,
       dictionaryCoverage: { covered: cards.length, total, target } };
   }
 
   function knownCardIds() {
     return [...new Set([...legacyPacks.flatMap(pack => pack.cards.map(card => card.id)),
-      ...studyIds.values()].map(value => typeof value === "string" ? value : value.id))];
+      ...conceptRows.flatMap(row => rowLanguages.get(row).map(language =>
+        studyIds.get(`${row.id}|${language}`)?.id || `row:${row.id}:${language}`))])];
   }
 
   async function translateText(text, target, source = "en") { return lookup(text, target, source).text; }
@@ -292,7 +387,7 @@
   }
 
   root.TranslationSupport = {
-    LANGUAGES, normalizeLanguage, sourceLanguage, load, install, lookup, learningLanguages,
+    LANGUAGES, normalizeLanguage, sourceLanguage, languageDetails, languageLabel, load, install, lookup, learningLanguages,
     targetLanguages, learningPack, bindVocabulary, knownCardIds,
     localizePack, studyPacks, translateText, localizePresentation
   };

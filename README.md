@@ -6,7 +6,7 @@ A browser-based vocabulary spaced-repetition app with shared language columns an
 
 ## Getting started
 
-Visit the live site, click **Start learning**, and select a vocabulary pack. Under **Settings → Audio & Pronunciation**, set **Word repeat count** from 1 to 10. The selected count controls automatic and manual word readings (and example sentence readings when enabled). Settings and study progress are saved in your browser; you can export a JSON backup.
+Visit the live site, click **Start learning**, and select your learning and meaning languages. Under **Settings → Audio & Pronunciation**, set **Word repeat count** from 1 to 10. The selected count controls automatic and manual word readings (and example sentence readings when enabled). Settings and study progress are saved in your browser; you can export a JSON backup.
 
 ## Repository layout
 
@@ -19,7 +19,7 @@ The web app is HTML, CSS, and vanilla JavaScript with no build-time dependencies
 
 ## Offline multilingual dictionary
 
-Choose the learning language and meaning language above the study screen. Shared concept rows have Italian, English, Spanish, Vietnamese and Chinese cells. Published human-edited dictionaries supplement those rows. Add future languages through cells in the same data model. Coverage varies by column combination. See [dictionary coverage, sources and extension instructions](web/dictionary/README.md).
+Choose the learning language and meaning language above the study screen. Shared concept rows provide 356 published language columns across 1,514 concepts. The language inventory includes regional and historical varieties, with transcription labels where applicable. Published human-edited dictionaries supplement those rows. Add future languages through cells in the same data model. Coverage varies by column combination. See [dictionary coverage, sources and extension instructions](web/dictionary/README.md).
 
 ## Developing locally
 

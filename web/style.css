@@ -1749,6 +1749,23 @@ input, textarea {
   }
 }
 
+.language-representation {
+  margin: 16px auto 0;
+  max-width: 55ch;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.hanzi-term,
+.choice-btn > span:first-child,
+.word-hanzi,
+.word-meaning,
+.card-word-text,
+.card-meaning-text {
+  overflow-wrap: anywhere;
+}
+
 /* Language columns remain the primary context controls on narrow screens. */
 @media (max-width: 720px) {
   .header-container {
