@@ -147,9 +147,11 @@ write_json("es-en-wikdict.json", {"sourceId": "wikdict-spa-eng", "entries": supp
 shutil.copyfile(INPUT / "spa-eng.tei", OUTPUT / "sources" / "spa-eng.tei")
 shutil.copyfile(INPUT / "GPL-2.0.txt", OUTPUT / "sources" / "GPL-2.0.txt")
 shutil.copyfile(Path(__file__), OUTPUT / "sources" / "build-dictionary.py")
+columns = json.loads((OUTPUT / "concepts.json").read_text(encoding="utf-8"))
 write_json("catalog.json", {
     "schemaVersion": 2,
-    "languages": {"zh-CN": "Chinese (Mandarin)", "es": "Spanish", "en": "English", "vi": "Vietnamese", "it": "Italian"},
+    "languages": columns["languages"],
+    "languageDetails": columns["languageDetails"],
     "sources": sources,
     "rowFiles": ["concepts.json"],
     "imports": [
