@@ -19,7 +19,7 @@ The web app is HTML, CSS, and vanilla JavaScript with no build-time dependencies
 
 ## Offline multilingual dictionary
 
-Choose the learning language and meaning language above the study screen. Shared concept rows provide 356 published language columns across 1,514 concepts. The language inventory includes regional and historical varieties, with transcription labels where applicable. Published human-edited dictionaries supplement those rows. Add future languages through cells in the same data model. Coverage varies by column combination. See [dictionary coverage, sources and extension instructions](web/dictionary/README.md).
+Choose the learning language and meaning language above the study screen. Shared concept rows combine 356 published language varieties with an assistant-authored batch of 80 concepts in 40 modern languages, giving 371 language columns. Generated cells are activated directly and labelled, with published entries covering the remaining cells. The language inventory includes regional and historical varieties, with transcription labels where applicable. Published human-edited dictionaries supplement those rows. Add future languages through cells in the same data model. Coverage varies by column combination. See [dictionary coverage, sources and extension instructions](web/dictionary/README.md).
 
 ## Developing locally
 

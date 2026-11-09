@@ -2,9 +2,9 @@
 
 A modern, responsive, client-side spaced repetition (SRS) web app for learning vocabulary from selectable language packs. Built with pure HTML5, CSS3, and JavaScript — zero dependencies and zero build steps. Text and locally bundled picture quizzes work offline after the app has been cached.
 
-## Shared language columns in v42
+## Shared language columns in v43
 
-Choose learning and meaning languages directly. Shared concept rows provide 356 language columns from all IDS v4.4 and WOLD source vocabularies, plus the existing Vietnamese and Chinese concept lists. Transcription-based and historical varieties are labelled. Published bilingual sources supplement the rows through a sparse import adapter. The study screen retains its minimalist one-word layout. Coverage is filtered to populated cells, saved progress remains language-specific, and historical translation sections below describe earlier releases. See [coverage, licensing, source hashes and adding language pairs](dictionary/README.md).
+Choose learning and meaning languages directly. Assistant-generated translations are preferred for 80 concepts in 40 modern languages, with their origin labelled. The combined model has 371 language columns. See [authored coverage and limitations](dictionary/GENERATED.md). Shared concept rows provide 356 language columns from all IDS v4.4 and WOLD source vocabularies, plus the existing Vietnamese and Chinese concept lists. Transcription-based and historical varieties are labelled. Published bilingual sources supplement the rows through a sparse import adapter. The study screen retains its minimalist one-word layout. Coverage is filtered to populated cells, saved progress remains language-specific, and historical translation sections below describe earlier releases. See [coverage, licensing, source hashes and adding language pairs](dictionary/README.md).
 
 ---
 

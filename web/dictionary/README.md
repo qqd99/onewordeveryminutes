@@ -2,13 +2,15 @@
 
 Choose **Learning language** and **Meaning language** above the study screen. Both selections read cells from the same vocabulary rows. The study screen keeps its one-word layout.
 
+The app now prefers an **assistant-generated layer** where available, following the user's authorization to use generated translations directly. It currently contains 3,200 cells across 80 concepts and 40 modern languages, with 371 combined language columns. Published entries supply the remaining cells. Study cards and Settings identify generated and published coverage separately. [Generated coverage, origin and limitations](GENERATED.md).
+
 Each shared row represents a published concept, with a cell for each available language. For example, row `ids:1-310` contains Italian `acqua`, English `water`, Spanish `agua`, Vietnamese `nước` and Chinese `水`. Selecting Italian and Vietnamese supplies `acqua` as the prompt and `nước` as its meaning. Selecting English and Italian uses `water` and `acqua` from that same row.
 
 ## Included columns
 
 The dictionary includes **356 language columns across 1,514 concept rows**, with **392,679 populated cells**. It imports every vocabulary in IDS v4.4 (319 source varieties), all 41 WOLD vocabularies, and the existing Vietnamese and Chinese concept lists. Compatible standard-spelling varieties share a column. Regional, historical and differently transcribed varieties retain distinct column IDs. The [complete language inventory](LANGUAGES.md) lists names, coverage, writing conventions and individual vocabulary authors.
 
-French, German, Portuguese, Russian, Japanese, Thai, Indonesian and many regional and historical languages are available alongside the original five languages. This is the complete coverage of these source releases. Arabic, Korean and Hindi are among the languages absent from these sources. Additional languages require published, sense-aligned data.
+French, German, Portuguese, Russian, Japanese, Thai, Indonesian and many regional and historical languages are available alongside the original five languages. This is the complete coverage of these source releases. Arabic, Korean and Hindi are supplied by the generated layer for its 80 concepts. Additional language coverage can use published sense-aligned entries or explicitly identified assistant-generated cells.
 
 Japanese, Thai and Kildin Saami use WOLD's original-script fields with published readings. Missing original-script fields stay empty. Vietnamese and Chinese retain their existing native-script entries. Many IDS vocabularies use phonemic, phonetic, Cyrillic or Latin transcription. The selectors and study screen identify these representations. Source spelling, including unusual conventions and source errors, is preserved.
 
@@ -31,6 +33,8 @@ Existing Chinese and Spanish word IDs remain accepted at the saved-progress boun
 The PWA caches all row and reference files during installation. Open the site online once and allow installation to finish before using it offline. Audio and internet picture features have their own connectivity requirements.
 
 Published human editing describes editorial origin. The data can contain errors, outdated terminology and contextual ambiguity. The app preserves source distinctions and published labels.
+
+The source counts below describe the published foundation. Assistant-generated cells can replace individual prompts or meanings and add coverage. The app computes current coverage from the combined model.
 
 ## Attribution and redistribution
 

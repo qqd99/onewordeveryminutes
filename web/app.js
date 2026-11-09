@@ -65,6 +65,8 @@
   const els = {
     themeToggle: $("#themeToggle"),
     packSelect: $("#packSelect"),
+    translationOrigin: $("#translationOrigin"),
+    languageRepresentation: $("#languageRepresentation"),
     quickSaveSelect: $("#quickSaveSelect"),
     appModeBadge: $("#appModeBadge"),
     tabButtons: $$(".tab-button"),
@@ -437,11 +439,11 @@
     }).filter(Boolean).join(" / ");
     const representation = document.querySelector("#languageRepresentation");
     if (representation) {
-      representation.textContent = representations;
-      representation.hidden = !representations;
+      representation.textContent = "";
+      representation.hidden = true;
     }
     const info = document.querySelector("#dictionaryCoverage");
-    if (info) info.textContent = `${coverage.covered.toLocaleString()} of ${coverage.total.toLocaleString()} words covered · ${TranslationSupport.LANGUAGES[source] || source} → ${TranslationSupport.LANGUAGES[coverage.target] || coverage.target} · ${TranslationSupport.learningLanguages().length} published language columns · ${representations || "Published human-edited dictionaries"}`;
+    if (info) info.textContent = `${coverage.covered.toLocaleString()} of ${coverage.total.toLocaleString()} words covered · ${coverage.generatedMeanings || 0} entries include assistant-generated meanings · ${coverage.covered - (coverage.generatedMeanings || 0)} use published meanings · ${TranslationSupport.learningLanguages().length} language columns · ${representations || "Offline dictionary"}`;
     if (els.learningModeSelect) {
       const name = TranslationSupport.LANGUAGES[source] || source;
       const labels = [`Mode 1 · ${name} → meaning`, `Mode 2 · meaning → ${name}`, `Mode 3 · ${name} → picture`];
@@ -1984,6 +1986,34 @@
     els.hanziTerm.classList.toggle("english-prompt", englishToChinese);
     els.pinyinReading.hidden = englishToChinese || !card.reading;
     els.pinyinReading.textContent = englishToChinese ? "" : (card.reading || "—");
+    const origin = card.dictionarySenses?.[0];
+    const generatedWord = (card.learningOrigin || origin?.learningOrigin) === "assistant-generated";
+    const generatedMeaning = card.dictionarySenses?.some(sense => sense.meaningOrigin === "assistant-generated");
+    const mixedMeanings = generatedMeaning && card.dictionarySenses.some(sense => sense.meaningOrigin === "published-human-edited");
+    if (els.translationOrigin) {
+      let label = "Published dictionary entry";
+      if (mixedMeanings) {
+        label = `Mixed assistant-generated and published meanings · ${generatedWord ? "assistant-generated" : "published"} learning word`;
+      } else if (generatedWord && generatedMeaning) {
+        label = "Assistant-generated word and meaning · unreviewed";
+      } else if (generatedMeaning) {
+        label = "Assistant-generated meaning · published learning word";
+      } else if (generatedWord) {
+        label = "Assistant-generated learning word · published meaning";
+      }
+      els.translationOrigin.textContent = label;
+    }
+    if (els.languageRepresentation) {
+      const codes = [generatedWord ? "" : TranslationSupport.sourceLanguage(state.activePack),
+        generatedMeaning && !mixedMeanings ? "" : card.meaningLanguageCode].filter(Boolean);
+      const descriptions = codes.map(code => {
+        const detail = TranslationSupport.languageDetails(code);
+        return /transcription|source representation/i.test(detail.representation || "")
+          ? `${TranslationSupport.LANGUAGES[code]} · ${detail.representation.toLowerCase()}` : "";
+      }).filter(Boolean);
+      els.languageRepresentation.textContent = descriptions.join(" / ");
+      els.languageRepresentation.hidden = !descriptions.length;
+    }
 
     // Quiz Section
     state.currentQuiz = englishToChinese
@@ -2066,7 +2096,7 @@
           a.removeAttribute("href");
           a.target = "_blank";
           a.rel = "noopener noreferrer";
-          a.title = item.meaning || "No published dictionary meaning";
+          a.title = item.meaning || "Meaning unavailable";
 
           const wordSpan = document.createElement("span");
           wordSpan.className = "chip-word";
@@ -2620,7 +2650,7 @@
     els.resultChinese.textContent = text;
     els.resultPinyin.textContent = result.reading;
     els.resultPinyin.hidden = !result.reading;
-    els.resultEnglish.textContent = result.text || "No published entry for this text in the installed dictionary. See individual words below.";
+    els.resultEnglish.textContent = result.text || "No installed entry for this text. See individual words below.";
     els.translateWordsGrid.innerHTML = "";
     for (const item of details) {
       const container = document.createElement("div");
@@ -2642,7 +2672,7 @@
       }
       if (!item.senses.length) {
         const missing = document.createElement("p");
-        missing.textContent = "No published entry in this dictionary pair.";
+        missing.textContent = "No installed entry in this language pair.";
         container.appendChild(missing);
       }
       els.translateWordsGrid.appendChild(container);
