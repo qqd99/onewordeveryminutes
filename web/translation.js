@@ -12,6 +12,8 @@
   let rowLanguages = new Map();
   let rowIndex = new Map();
   let indexedColumns = new Set();
+  let generatedCells = new Map();
+  let generatedCounts = new Map();
   let availableTargets = new Map();
   let targetCache = new Map();
   let legacyPacks = [];
@@ -55,6 +57,10 @@
 
   function validSource(source) {
     return source?.review === "published-human-edited" && source.url && source.license;
+  }
+
+  function cellFor(row, language) {
+    return generatedCells.get(row)?.get(language) || row.cells[language];
   }
 
   function install(data, files) {
@@ -150,8 +156,50 @@
         }, [item.meaningLanguage]);
       });
     }
+    const nextGenerated = new Map();
+    const nextGeneratedCounts = new Map();
+    const nextLanguages = { ...data.languages };
+    const nextDetails = { ...data.languageDetails };
+    for (const name of data.generatedFiles || []) {
+      const file = files[name];
+      const source = file?.source;
+      if (file?.schemaVersion !== 1 || !Array.isArray(file.rows) || !file.languages ||
+          !source?.id || Object.hasOwn(nextSources, source.id) || source.review !== "assistant-generated" ||
+          !source.author || !source.created || !source.name || !source.url || !source.license) {
+        throw new Error(`Invalid assistant translation file ${name}.`);
+      }
+      nextSources[source.id] = source;
+      for (const [language, label] of Object.entries(file.languages)) {
+        if (normalizeLanguage(language) !== language || typeof label !== "string" || !label.trim()) {
+          throw new Error("Invalid assistant translation language.");
+        }
+        nextLanguages[language] = nextLanguages[language] || label;
+        nextDetails[language] = nextDetails[language] || { speechLang: language, representation: "Assistant-generated spelling" };
+      }
+      for (const entry of file.rows) {
+        const row = rowsById.get(entry.id);
+        if (!row || entry.sense !== row.label || !entry.cells) throw new Error("Assistant translation sense does not match its concept.");
+        if (!nextGenerated.has(row)) nextGenerated.set(row, new Map());
+        const cells = nextGenerated.get(row);
+        for (const [language, cell] of Object.entries(entry.cells)) {
+          if (!file.languages[language] || cells.has(language) || !Array.isArray(cell?.forms) || !cell.forms.length ||
+              cell.forms.some(form => typeof form !== "string" || !form.trim()) ||
+              (cell.reading !== undefined && typeof cell.reading !== "string")) {
+            throw new Error(`Invalid or duplicate assistant translation cell in ${row.id}.`);
+          }
+          cells.set(language, { ...cell, sources: [{ id: source.id, key: `${row.id}|${language}` }] });
+          nextGeneratedCounts.set(language, (nextGeneratedCounts.get(language) || 0) + 1);
+          if (!nextRowLanguages.get(row).includes(language)) {
+            nextRowLanguages.get(row).push(language);
+            if (!nextColumnRows.has(language)) nextColumnRows.set(language, []);
+            nextColumnRows.get(language).push(row);
+          }
+        }
+      }
+    }
     // Commit a fully validated model, allowing safe retries after load failures.
-    catalog = data;
+    catalog = { ...data, languages: Object.fromEntries(Object.entries(nextLanguages)
+      .sort((a, b) => a[1].localeCompare(b[1], "en"))), languageDetails: nextDetails };
     sources = nextSources;
     conceptRows = nextRows;
     languageIndex = nextIndex;
@@ -160,13 +208,15 @@
     rowLanguages = nextRowLanguages;
     rowIndex = rowsById;
     indexedColumns = new Set();
+    generatedCells = nextGenerated;
+    generatedCounts = nextGeneratedCounts;
     availableTargets = nextTargets;
     targetCache = new Map();
     importedRows = new WeakMap();
     packCache = new WeakMap();
     legacyPacks = [];
     studyIds = new Map();
-    Object.assign(LANGUAGES, data.languages);
+    Object.assign(LANGUAGES, nextLanguages);
   }
 
   async function load() {
@@ -174,7 +224,7 @@
       const response = await fetch("dictionary/catalog.json");
       if (!response.ok) throw new Error("Could not load the vocabulary columns.");
       const data = await response.json();
-      const names = [...new Set([...(data.rowFiles || []), ...(data.imports || []).map(item => item.file)])];
+      const names = [...new Set([...(data.rowFiles || []), ...(data.imports || []).map(item => item.file), ...(data.generatedFiles || [])])];
       const files = await Promise.all(names.map(async name => {
         if (!/^[a-zA-Z0-9-]+\.json$/.test(name)) throw new Error("Invalid vocabulary file path.");
         const result = await fetch(`dictionary/${name}`);
@@ -203,8 +253,8 @@
     if (!languageIndex.has(language)) languageIndex.set(language, new Map());
     const words = languageIndex.get(language);
     for (const row of columnRows.get(language) || []) {
-      for (const form of row.cells[language].forms) {
-        const key = wordKey(form, language);
+      const forms = [...(row.cells[language]?.forms || []), ...(generatedCells.get(row)?.get(language)?.forms || [])];
+      for (const key of new Set(forms.map(form => wordKey(form, language)))) {
         if (!words.has(key)) words.set(key, []);
         words.get(key).push({ row });
       }
@@ -242,13 +292,16 @@
   }
 
   function describeRow(row, target, source) {
-    const cell = row.cells[target];
-    const credits = [...row.cells[source].sources, ...cell.sources];
+    const cell = cellFor(row, target);
+    const learningCell = cellFor(row, source);
+    const credits = [...learningCell.sources, ...cell.sources];
     const unique = [...new Map(credits.map(credit => [credit.id, credit])).values()];
     const first = sources[unique[0].id];
     return {
       ...cell.publishedSense, rowId: row.id, gloss: cellText(cell),
-      reading: row.cells[source].reading || "", sourceId: unique[0].id,
+      reading: learningCell.reading || "", sourceId: unique[0].id,
+      learningOrigin: generatedCells.get(row)?.has(source) ? "assistant-generated" : "published-human-edited",
+      meaningOrigin: generatedCells.get(row)?.has(target) ? "assistant-generated" : "published-human-edited",
       sourceName: unique.map(credit => sources[credit.id].name).join("; "),
       license: [...new Set(unique.map(credit => sources[credit.id].license))].join("; "),
       sourceUrl: row.sourceUrl || first.url,
@@ -262,13 +315,14 @@
     prepareColumn(source, true);
     prepareColumn(target);
     const records = languageIndex.get(source)?.get(wordKey(word, source)) || [];
-    const rows = records.flatMap(rowsFor).filter(row => row.cells[target] && (!sourceKey || row.sourceKey === sourceKey));
+    const rows = records.flatMap(rowsFor).filter(row => cellFor(row, target) && (!sourceKey || row.sourceKey === sourceKey))
+      .sort((a, b) => Number(generatedCells.get(b)?.has(target) || false) - Number(generatedCells.get(a)?.has(target) || false));
     const senses = rows.map(row => describeRow(row, target, source));
     return {
       status: senses.length ? "found" : "missing", headword: String(word || ""),
       sourceLanguage: source, targetLanguage: target, senses,
       text: [...new Set(senses.map(sense => sense.gloss))].join("; "),
-      reading: rows[0]?.cells[source].reading || ""
+      reading: rows.length ? cellFor(rows[0], source).reading || "" : ""
     };
   }
 
@@ -284,6 +338,7 @@
       if (result.status !== "found") return [];
       const example = result.senses.flatMap(sense => sense.examples || [])[0];
       return [{ ...card, meaning: result.text, reading: card.reading || result.reading,
+        learningOrigin: card.learningOrigin || "published-human-edited",
         speechLang: card.speechLang || pack.speechLang || source,
         dictionaryLocalized: true, meaningLanguageCode: target, dictionarySenses: result.senses,
         example: example ? { ...example, words: [] } : null }];
@@ -321,10 +376,10 @@
       // Existing concept cells claim legacy IDs before newly added WOLD cells.
       // A new homograph earlier in the list must not move a saved sense's ID.
       const rows = [...(columnRows.get(language) || [])].sort((a, b) =>
-        Number(a.cells[language].sources.every(credit => credit.id === "wold-2009")) -
-        Number(b.cells[language].sources.every(credit => credit.id === "wold-2009")));
+        Number(!a.cells[language] || a.cells[language].sources.every(credit => credit.id === "wold-2009")) -
+        Number(!b.cells[language] || b.cells[language].sources.every(credit => credit.id === "wold-2009")));
       for (const row of rows) {
-        const word = row.cells[language].forms[0];
+        const word = (row.cells[language] || cellFor(row, language)).forms[0];
         const legacy = old.get(wordKey(word, language));
         const id = legacy && !claimed.has(legacy.id) ? legacy.id : `row:${row.id}:${language}`;
         claimed.add(id);
@@ -340,12 +395,14 @@
     prepareColumn(target);
     const rows = columnRows.get(source) || [];
     const speechLang = languageDetails(source).speechLang || source;
-    const cards = rows.filter(row => row.cells[target]).map(row => {
-      const cell = row.cells[source];
+    const cards = rows.filter(row => cellFor(row, target)).map(row => {
+      const cell = cellFor(row, source);
       const saved = studyIds.get(`${row.id}|${source}`);
+      const generated = generatedCells.get(row)?.has(source);
       return { id: saved?.id || `row:${row.id}:${source}`, rowId: row.id,
-        front: cell.forms[0], reading: saved?.reading || cell.reading || "",
-        meaning: cellText(row.cells[target]), speechLang, example: null,
+        learningOrigin: generated ? "assistant-generated" : "published-human-edited",
+        front: cell.forms[0], reading: generated ? cell.reading || "" : saved?.reading || cell.reading || "",
+        meaning: cellText(cellFor(row, target)), speechLang, example: null,
         dictionaryLocalized: true, meaningLanguageCode: target,
         dictionarySenses: [describeRow(row, target, source)] };
     });
@@ -353,7 +410,7 @@
     const ids = new Set(cards.map(card => card.id));
     let total = rows.length;
     for (const pack of legacyPacks.filter(item => sourceLanguage(item) === source)) {
-      total += pack.cards.filter(card => !includedWords.has(wordKey(card.front, source))).length;
+      total += pack.cards.filter(card => !includedWords.has(wordKey(card.front, source)) && !ids.has(card.id)).length;
       for (const card of localizePack(pack, target).cards) {
         if (!includedWords.has(wordKey(card.front, source)) && !ids.has(card.id)) {
           cards.push(card);
@@ -363,7 +420,13 @@
     }
     return { id: `language:${source}`, languageCode: source, speechLang,
       name: LANGUAGES[source] || source, cards, meaningLanguageCode: target,
-      dictionaryCoverage: { covered: cards.length, total, target } };
+      dictionaryCoverage: { covered: cards.length, total, target,
+        generatedMeanings: cards.filter(card => card.dictionarySenses?.some(sense => sense.meaningOrigin === "assistant-generated")).length } };
+  }
+
+  function generatedCoverage() {
+    return { languages: generatedCounts.size, cells: [...generatedCounts.values()].reduce((sum, count) => sum + count, 0),
+      concepts: generatedCells.size };
   }
 
   function knownCardIds() {
@@ -388,7 +451,7 @@
 
   root.TranslationSupport = {
     LANGUAGES, normalizeLanguage, sourceLanguage, languageDetails, languageLabel, load, install, lookup, learningLanguages,
-    targetLanguages, learningPack, bindVocabulary, knownCardIds,
+    targetLanguages, learningPack, bindVocabulary, knownCardIds, generatedCoverage,
     localizePack, studyPacks, translateText, localizePresentation
   };
 })(globalThis);

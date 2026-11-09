@@ -62,7 +62,7 @@ test("lookups retain senses, parts of speech, labels, source pages and licenses"
   for (const sense of result.senses) {
     assert.ok(sense.gloss);
     assert.ok(sense.rowId);
-    assert.ok(sense.sources.every(source => source.review === "published-human-edited"));
+    assert.ok(sense.sources.every(source => ["published-human-edited", "assistant-generated"].includes(source.review)));
     if (sense.sourceId === "es-vi") {
       assert.ok(sense.partOfSpeech);
       assert.match(sense.sourceUrl, /^https:\/\/vi.wiktionary.org\/wiki\//);
@@ -95,7 +95,7 @@ test("pack projection changes meanings while retaining IDs, source cards and sav
   const en = api.localizePack(chinese, "en");
   const vi = api.localizePack(chinese, "vi");
   assert.equal(en.cards.length, 9978);
-  assert.equal(vi.cards.length, 1445);
+  assert.equal(vi.cards.length, 1458);
   const greeting = vi.cards.find(card => card.front === "你好");
   assert.equal(greeting.id, "w001");
   assert.equal(greeting.speechLang, "zh-CN");
@@ -103,7 +103,7 @@ test("pack projection changes meanings while retaining IDs, source cards and sav
   assert.equal(greeting.meaningLanguageCode, "vi");
   assert.equal(JSON.stringify(chinese), original);
   assert.equal(api.localizePack(chinese, "vi"), vi);
-  assert.equal(api.localizePack(chinese, "ko").cards.length, 0);
+  assert.equal(api.localizePack(chinese, "und-x-missing").cards.length, 0);
 });
 
 test("legacy Spanish progress is retained while target choices come from shared columns", () => {
@@ -111,11 +111,11 @@ test("legacy Spanish progress is retained while target choices come from shared 
   assert.equal(spanish.cards.length, 8549);
   assert.equal(new Set(spanish.cards.map(card => card.id)).size, spanish.cards.length);
   assert.equal(api.localizePack(spanish, "en").cards.length, 4646);
-  assert.equal(api.localizePack(spanish, "vi").cards.length, 5122);
+  assert.equal(api.localizePack(spanish, "vi").cards.length, 5124);
   for (const code of ["en", "vi", "it", "zh-CN", "ja", "fr", "de", "th", "id"]) {
     assert.ok(api.targetLanguages("es").includes(code));
   }
-  assert.equal(api.targetLanguages("ko").length, 0);
+  assert.equal(api.targetLanguages("und-x-missing").length, 0);
 });
 
 test("published examples have meanings in the selected target language", () => {
@@ -160,7 +160,7 @@ test("switching meaning language reprojects the active pack without changing rev
   vm.runInNewContext("let translationGeneration = 0; let visibleTranslationGeneration = 0;\n" + app.slice(start, end) +
     "\nglobalThis.change = changeMeaningLanguage; globalThis.apply = applyDictionaryLanguage;", ctx);
   ctx.change("vi");
-  assert.equal(state.activePack.cards.length, 2102);
+  assert.equal(state.activePack.cards.length, 2106);
   assert.equal(state.store.progress, progress);
   assert.equal(state.currentCard, null);
   assert.equal(state.currentQuiz, null);
@@ -169,7 +169,7 @@ test("switching meaning language reprojects the active pack without changing rev
   state.store.settings.learningLanguage = "es";
   ctx.apply();
   assert.equal(state.activePack.languageCode, "es");
-  assert.equal(state.activePack.cards.length, 5627);
+  assert.equal(state.activePack.cards.length, 5625);
   assert.ok(state.activePack.cards.every(card => card.speechLang === "es"));
   state.store.settings.learningLanguage = "it";
   state.store.settings.translationLanguage = "en";
@@ -236,7 +236,7 @@ test("failed dictionary loads can be retried without publishing partial data", a
 test("service worker precaches each dictionary and the published copies match", () => {
   const sw = fs.readFileSync(path.join(root, "web/sw.js"), "utf8");
   const data = JSON.parse(fs.readFileSync(path.join(root, "web/dictionary/catalog.json"), "utf8"));
-  for (const name of ["catalog.json", ...data.rowFiles, ...data.imports.map(item => item.file)]) {
+  for (const name of ["catalog.json", ...data.rowFiles, ...data.imports.map(item => item.file), ...data.generatedFiles]) {
     assert.ok(sw.includes(`./dictionary/${name}`), name);
     assert.deepEqual(fs.readFileSync(path.join(root, "web/dictionary", name)), fs.readFileSync(path.join(root, "docs/dictionary", name)));
   }
@@ -285,7 +285,7 @@ test("the same cells support English and Vietnamese as learning languages", () =
     assert.equal(card.speechLang, language);
   }
   assert.notEqual(api.learningPack("en", "it").cards[0].id, api.learningPack("it", "en").cards[0].id);
-  assert.equal(api.learningPack("it", "zh-CN").cards.length, 1261);
+  assert.equal(api.learningPack("it", "zh-CN").cards.length, 1262);
 });
 
 test("old Chinese word IDs remain valid and language-column IDs survive meaning changes", () => {
@@ -345,13 +345,13 @@ test("valid meanings of an ambiguous learning word are excluded from distractors
 
 test("all published source columns are selectable with stable, distinct language tags", () => {
   const catalog = JSON.parse(fs.readFileSync(path.join(root, "web/dictionary/catalog.json"), "utf8"));
-  assert.equal(api.learningLanguages().length, 356);
+  assert.equal(api.learningLanguages().length, 371);
   assert.equal(Object.keys(catalog.languages).length, 356);
   assert.equal(Object.values(catalog.languageDetails).reduce((sum, detail) => sum + detail.concepts, 0), 392679);
   for (const code of api.learningLanguages()) {
     assert.equal(api.normalizeLanguage(code), code);
     assert.ok(api.targetLanguages(code).length > 0, code);
-    assert.ok(catalog.languageDetails[code].representation, code);
+    assert.ok(api.languageDetails(code).representation, code);
   }
   assert.equal(api.normalizeLanguage("zh-TW"), "zh-TW");
   assert.equal(api.normalizeLanguage("cmn-x-wold-22"), "zh-x-wold-22");
@@ -361,7 +361,7 @@ test("all published source columns are selectable with stable, distinct language
 
 test("native Japanese and Thai and published French and German work in both column directions", () => {
   const before = requests.length;
-  for (const [language, word] of [["ja", "水"], ["th", "นำ้"], ["fr", "eau"], ["de", "Wasser"]]) {
+  for (const [language, word] of [["ja", "水"], ["th", "น้ำ"], ["fr", "eau"], ["de", "Wasser"]]) {
     const pack = api.learningPack(language, "vi");
     const water = pack.cards.find(card => card.rowId === "ids:1-310");
     assert.ok(water.front.includes(word), `${language} water is ${water.front}`);
@@ -370,7 +370,7 @@ test("native Japanese and Thai and published French and German work in both colu
     const reverse = api.learningPack("vi", language).cards.find(card => card.rowId === water.rowId);
     assert.ok(reverse.meaning.includes(word));
     assert.equal(water.id, api.learningPack(language, "en").cards.find(card => card.rowId === water.rowId).id);
-    if (["ja", "th"].includes(language)) assert.ok(water.reading);
+    if (language === "ja") assert.equal(water.reading, "みず");
   }
   assert.equal(requests.length, before);
 });
@@ -422,4 +422,89 @@ test("new WOLD homographs cannot claim a previously saved concept's legacy ID", 
   const cards = ctx.TranslationSupport.learningPack("en", "vi").cards;
   assert.equal(cards.find(card => card.rowId === "saved").id, "old-bank");
   assert.equal(cards.find(card => card.rowId === "new").id, "row:new:en");
+});
+
+test("the 3200 authored cells activate directly with explicit generated provenance", () => {
+  const authored = JSON.parse(fs.readFileSync(path.join(root, "web/dictionary/assistant-core.json"), "utf8"));
+  assert.equal(authored.source.review, "assistant-generated");
+  assert.equal(Object.keys(authored.languages).length, 40);
+  assert.equal(authored.rows.length, 80);
+  assert.equal(api.generatedCoverage().cells, 3200);
+  assert.equal(api.generatedCoverage().languages, 40);
+  const before = requests.length;
+  for (const code of Object.keys(authored.languages)) {
+    const target = code === "vi" ? "en" : "vi";
+    const pack = api.learningPack(code, target);
+    for (const row of authored.rows) {
+      const card = pack.cards.find(card => card.rowId === row.id);
+      assert.ok(card, `${code} ${row.id}`);
+      assert.equal(card.front, row.cells[code].forms[0]);
+      assert.equal(card.meaning, row.cells[target].forms.join("; "));
+      assert.equal(card.dictionarySenses[0].learningOrigin, "assistant-generated");
+      assert.equal(card.dictionarySenses[0].meaningOrigin, "assistant-generated");
+      assert.ok(card.dictionarySenses[0].sources.every(source => source.review === "assistant-generated"));
+      const lookup = api.lookup(card.front, target, code);
+      assert.ok(lookup.senses.some(sense => sense.rowId === row.id && sense.meaningOrigin === "assistant-generated"));
+    }
+    assert.ok(pack.dictionaryCoverage.generatedMeanings >= 80);
+  }
+  assert.equal(requests.length, before);
+});
+
+test("Arabic, Korean and Hindi study uses authored meanings and Thai source spelling stays available for lookup", () => {
+  for (const [code, word] of [["ar", "ماء"], ["ko", "물"], ["hi", "पानी"], ["zh-TW", "水"]]) {
+    assert.equal(api.learningPack(code, "vi").cards.length, 80);
+    const card = api.learningPack(code, "vi").cards.find(card => card.rowId === "ids:1-310");
+    assert.equal(card.front, word);
+    assert.equal(card.meaning, "nước");
+    assert.equal(card.id, api.learningPack(code, "en").cards.find(item => item.rowId === card.rowId).id);
+  }
+  assert.equal(api.learningPack("th", "vi").cards.find(card => card.rowId === "ids:1-310").front, "น้ำ");
+  assert.ok(api.lookup("นำ้", "vi", "th").senses.some(sense => sense.rowId === "ids:1-310"));
+  assert.ok(api.lookup("น้ำ", "vi", "th").senses.some(sense => sense.rowId === "ids:1-310"));
+  const fallback = api.learningPack("fr", "vi").cards.find(card => card.dictionarySenses[0].meaningOrigin === "published-human-edited");
+  assert.ok(fallback);
+  assert.ok(fallback.dictionarySenses[0].sources.every(source => source.review === "published-human-edited"));
+});
+
+test("generated overlays preserve original saved IDs and validate all sense replacements before commit", () => {
+  const ctx = { Intl };
+  vm.runInNewContext(script, ctx);
+  const local = ctx.TranslationSupport;
+  const published = { name: "Fixture", review: "published-human-edited", url: "https://example.org", license: "test" };
+  const cell = word => ({ forms: [word], sources: [{ id: "published", key: word }] });
+  const data = { schemaVersion: 2, languages: { en: "English", vi: "Vietnamese" }, sources: {},
+    rowFiles: ["rows.json"], imports: [], generatedFiles: ["authored.json"] };
+  const files = {
+    "rows.json": { sources: { published }, rows: [{ id: "water", label: "water", cells: { en: cell("aqua"), vi: cell("nước") } }] },
+    "authored.json": { schemaVersion: 1, languages: { en: "English", ar: "Arabic" }, source: {
+      id: "generated", name: "Assistant fixture", review: "assistant-generated", author: "OpenAI assistant",
+      created: "2026-11-09", url: "dictionary/GENERATED.md", license: "Assistant-generated content"
+    }, rows: [{ id: "water", sense: "water", cells: { en: { forms: ["water"] }, ar: { forms: ["ماء"] } } }] }
+  };
+  local.install(data, files);
+  local.bindVocabulary([{ languageCode: "en", cards: [{ id: "saved-water", front: "aqua", reading: "old reading" }] }]);
+  assert.equal(local.learningPack("en", "ar").cards[0].id, "saved-water");
+  assert.equal(local.learningPack("en", "ar").cards[0].front, "water");
+  assert.equal(local.learningPack("en", "ar").cards[0].reading, "");
+  assert.equal(local.lookup("aqua", "ar", "en").text, "ماء");
+  assert.equal(local.lookup("water", "ar", "en").text, "ماء");
+  assert.equal(files["rows.json"].rows[0].cells.en.forms[0], "aqua");
+  for (const mutate of [
+    file => { file.rows[0].id = "unknown"; },
+    file => { file.rows[0].sense = "unrelated sense"; },
+    file => { file.rows[0].cells.en.forms = [""]; },
+    file => { file.rows.push(structuredClone(file.rows[0])); },
+    file => { file.source.review = "published-human-edited"; },
+    file => { file.rows[0].cells.fr = { forms: ["eau"] }; }
+  ]) {
+    const invalid = structuredClone(files);
+    mutate(invalid["authored.json"]);
+    assert.throws(() => local.install(data, invalid), /assistant translation|Assistant translation/);
+    assert.equal(local.lookup("water", "ar", "en").text, "ماء");
+  }
+  local.install({ ...data, generatedFiles: [] }, { "rows.json": files["rows.json"] });
+  assert.equal(local.generatedCoverage().cells, 0);
+  assert.equal(local.learningLanguages().includes("ar"), false);
+  assert.equal(local.lookup("aqua", "vi", "en").text, "nước");
 });

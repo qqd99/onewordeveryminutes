@@ -148,10 +148,13 @@ shutil.copyfile(INPUT / "spa-eng.tei", OUTPUT / "sources" / "spa-eng.tei")
 shutil.copyfile(INPUT / "GPL-2.0.txt", OUTPUT / "sources" / "GPL-2.0.txt")
 shutil.copyfile(Path(__file__), OUTPUT / "sources" / "build-dictionary.py")
 columns = json.loads((OUTPUT / "concepts.json").read_text(encoding="utf-8"))
+catalog_path = OUTPUT / "catalog.json"
+existing_catalog = json.loads(catalog_path.read_text(encoding="utf-8")) if catalog_path.exists() else {}
 write_json("catalog.json", {
     "schemaVersion": 2,
     "languages": columns["languages"],
     "languageDetails": columns["languageDetails"],
+    "generatedFiles": existing_catalog.get("generatedFiles", []),
     "sources": sources,
     "rowFiles": ["concepts.json"],
     "imports": [

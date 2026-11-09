@@ -18,6 +18,7 @@ Vocabulary SRS combines word study, spaced repetition, pronunciation and an offl
 
 - Learning and meaning selectors choose language columns from shared, concept-aligned vocabulary rows.
 - 356 published language columns cover 1,514 concept rows. Source varieties and transcriptions remain distinct, and published dictionaries supplement the rows.
+- Assistant-generated translations are activated directly at the user's request. The initial batch has 80 concepts in 40 modern languages, giving 371 combined columns. Origin and partial coverage remain visible.
 - Coverage differs by populated column combination. Missing cells are disclosed and excluded from study.
 - Progress, preferences and independent save slots persist in the browser and support JSON backups.
 - Study supports word-to-meaning, meaning-to-word and picture quiz directions, with audio and recent-word loops.
